@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -8,6 +10,8 @@ class UserOut(BaseModel):
     phone: str
     name: str
     role: str
+    is_active: bool | None = None
+    created_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

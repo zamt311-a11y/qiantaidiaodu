@@ -57,6 +57,16 @@ def admin_sectors(request: Request) -> HTMLResponse:
     )
 
 
+@router.get("/users", response_class=HTMLResponse)
+def admin_users(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "users.html",
+        {
+        },
+    )
+
+
 @router.get("/report", response_class=HTMLResponse)
 def admin_report(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(

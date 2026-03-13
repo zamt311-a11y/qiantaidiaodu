@@ -335,3 +335,39 @@ def test_list_sector_bands(client, admin_token):
     assert res.status_code == 200
     assert isinstance(res.json(), list)
 
+
+def test_import_tasks_csv_utf16le_with_encoding(client, admin_token):
+    csv_content = "\n".join(
+        [
+            "绔欑偣ID,缁忓害,绾害",
+            "S010,116.397428,39.90923",
+        ]
+    ).encode("utf-16le")
+    res = client.post(
+        "/api/tasks/import",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        files={
+            "file": ("tasks_utf16.csv", csv_content, "text/csv"),
+            "encoding": (None, "utf-16le", "text/plain"),
+        },
+    )
+    assert res.status_code == 200
+    assert res.json()["inserted"] == 1
+
+
+def test_preview_sectors_csv(client, admin_token):
+    csv_content = "\n".join(
+        [
+            "cid,lonX,latX,azi,棰戞,涓嬭涓績棰戠偣",
+            "C310,116.397428,39.90923,90,78,640000",
+        ]
+    ).encode("utf-8")
+    res = client.post(
+        "/api/sectors/import/preview",
+        headers={"Authorization": f"Bearer {admin_token}"},
+        files={"file": ("sectors_preview.csv", csv_content, "text/csv")},
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert "cid" in [h.lower() for h in data["headers"]]
+

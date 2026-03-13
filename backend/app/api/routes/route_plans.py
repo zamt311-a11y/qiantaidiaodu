@@ -126,7 +126,7 @@ def get_route_plan(
     plan = db.get(RoutePlan, plan_id)
     if plan is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="路线不存在")
-    if current_user.role != "admin" and plan.assignee_id != current_user.id:
+    if current_user.role not in ("admin", "super_admin") and plan.assignee_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权限")
     ids = _parse_task_ids(plan.task_ids_json)
     tasks = []
