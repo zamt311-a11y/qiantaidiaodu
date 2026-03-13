@@ -1,6 +1,7 @@
 .venv/
 __pycache__/
 *.pyc
+.worktrees/
 .env
 backend/test.db
 backend/tmp_imp.db
