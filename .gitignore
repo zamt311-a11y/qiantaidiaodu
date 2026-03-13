@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+backend/test.db
+backend/tmp_imp.db
+backend/.pytest_cache/
+backend/.env
+backend/.venv/
+backend/__pycache__/
+android/.gradle/
+android/.idea/
+android/app/build/
+android/local.properties

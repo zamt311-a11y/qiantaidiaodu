@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>网优外场智联作业调度 - 工程师端</title>
+    <style>
+      :root {
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #0f172a;
+        --muted: #64748b;
+        --line: #e2e8f0;
+        --primary: #0f172a;
+        --accent: #0ea5e9;
+        --shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+        --shadow-soft: 0 6px 16px rgba(15, 23, 42, 0.06);
+        --radius: 14px;
+      }
+      html, body { height: 100%; margin: 0; background: var(--bg); color: var(--ink); }
+      body { font-family: "HarmonyOS Sans SC", "MiSans", "Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif; }
+      .wrap { max-width: 720px; margin: 0 auto; padding: 14px 14px 72px; }
+      .top { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom: 12px; }
+      .brand { font-weight: 800; letter-spacing: 0.02em; }
+      .sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+      .badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; color: var(--ink); background: #fff; }
+      .dot { width: 8px; height: 8px; border-radius: 999px; background: #94a3b8; }
+      .dot.ok { background: #22c55e; }
+      .card { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; background: #fff; box-shadow: var(--shadow-soft); }
+      .row { margin: 10px 0; }
+      label { display:block; font-size: 12px; color: #475569; margin-bottom: 6px; }
+      input[type="text"], input[type="password"], select, textarea { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid var(--line); border-radius: 10px; font-size: 14px; background: #fff; }
+      textarea { resize: vertical; min-height: 92px; }
+      button { padding: 10px 12px; border: 1px solid var(--primary); background: var(--primary); color: #fff; border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: 700; }
+      button.secondary { border: 1px solid var(--line); background: #fff; color: var(--ink); }
+      .hint { font-size: 12px; color: var(--muted); line-height: 1.4; }
+      .err { color: #b91c1c; font-size: 12px; }
+      .tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0; }
+      .tab { padding: 10px 8px; border: 1px solid var(--line); border-radius: 12px; background:#fff; color: var(--ink); font-weight: 800; text-align:center; cursor:pointer; }
+      .tab.on { border-color: var(--primary); background: #0f172a; color: #fff; }
+      .chips { display:flex; gap:8px; flex-wrap:wrap; }
+      .chip { padding: 8px 10px; border: 1px solid var(--line); border-radius: 999px; background:#fff; color: var(--ink); font-weight: 700; font-size: 12px; cursor:pointer; }
+      .chip.on { border-color: var(--accent); color: var(--accent); background: #eef9ff; }
+      .list { display: grid; gap: 10px; }
+      .item { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; background:#fff; display:grid; gap:6px; cursor:pointer; box-shadow: var(--shadow-soft); }
+      .line1 { display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+      .title { font-weight: 800; min-width: 0; white-space: nowrap; overflow:hidden; text-overflow:ellipsis; }
+      .pill { padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; }
+      .modalMask { position: fixed; inset: 0; z-index: 1200; background: rgba(15, 23, 42, 0.35); display: none; align-items: flex-end; justify-content: center; }
+      .modal { width: min(720px, 100%); background: #fff; border-radius: 18px 18px 0 0; padding: 12px; max-height: 82vh; overflow:auto; border-top: 1px solid var(--line); box-shadow: var(--shadow); }
+      .modalHead { display:flex; justify-content:space-between; gap:10px; align-items:center; }
+      .modalTitle { font-weight: 800; }
+      a { color: var(--accent); text-decoration: none; }
+      .hidden { display:none; }
+      .bottom-nav { position: fixed; left: 0; right: 0; bottom: 0; display: flex; gap: 8px; padding: 8px 12px; background: rgba(255,255,255,0.98); border-top: 1px solid var(--line); z-index: 1301; }
+      .bottom-nav a { flex: 1; text-align: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); text-decoration: none; font-weight: 700; background: #fff; }
+      .bottom-nav a.active { border-color: var(--accent); color: var(--accent); background: #eef9ff; }
+    </style>
+    <script>
+      const state = {
+        token: localStorage.getItem("token") || "",
+        user: null,
+        mode: "todo",
+        date_preset: "all",
+        tasks: [],
+        routePlans: [],
+      }
+
+      function setToken(t) {
+        state.token = t || ""
+        if (state.token) localStorage.setItem("token", state.token)
+        else localStorage.removeItem("token")
+      }
+
+      function markActiveNav() {
+        const path = location.pathname || ""
+        document.querySelectorAll("[data-nav]").forEach(el => {
+          const target = el.getAttribute("data-nav") || ""
+          el.classList.toggle("active", target && path.startsWith(target))
+        })
+      }
+
+      async function api(path, opts = {}) {
+        const headers = Object.assign({}, opts.headers || {})
+        if (state.token) headers["Authorization"] = `Bearer ${state.token}`
+        const res = await fetch(path, Object.assign({}, opts, { headers }))
+        const text = await res.text()
+        let data = null
+        try { data = text ? JSON.parse(text) : null } catch { data = text }
+        if (!res.ok) throw new Error((data && data.detail) ? data.detail : `HTTP ${res.status}`)
+        return data
+      }
+
+      function setUser(u) {
+        state.user = u || null
+        document.getElementById("userDot").classList.toggle("ok", !!state.user)
+        document.getElementById("userName").textContent = state.user ? (state.user.name || state.user.phone) : "未登录"
+        document.getElementById("loginCard").classList.toggle("hidden", !!state.user)
+        document.getElementById("mainCard").classList.toggle("hidden", !state.user)
+      }
+
+      async function loadMe() {
+        if (!state.token) { setUser(null); return }
+        try { setUser(await api("/api/auth/me")) } catch { setToken(""); setUser(null) }
+      }
+
+      async function doLogin() {
+        const phone = document.getElementById("phone").value.trim()
+        const password = document.getElementById("password").value
+        document.getElementById("loginErr").textContent = ""
+        try {
+          const data = await api("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone, password }) })
+          setToken(data.access_token)
+          await loadMe()
+          await reloadTasks()
+        } catch (e) {
+          document.getElementById("loginErr").textContent = e.message
+        }
+      }
+
+      function logout() {
+        setToken("")
+        setUser(null)
+        state.tasks = []
+        renderTasks()
+      }
+
+      function statusLabel(s) { return String(s || "-") }
+
+      function _pad2(n) { return String(n).padStart(2, "0") }
+
+      function fmtDt(s) {
+        if (!s) return "-"
+        const x = String(s).replace("T", " ").replace(".000", "")
+        return x.length > 16 ? x.slice(0, 16) : x
+      }
+
+      function dayBounds(preset) {
+        const d = new Date()
+        if (preset === "tomorrow") d.setDate(d.getDate() + 1)
+        const y = d.getFullYear()
+        const m = _pad2(d.getMonth() + 1)
+        const dd = _pad2(d.getDate())
+        const start = `${y}-${m}-${dd} 00:00:00`
+        const end = `${y}-${m}-${dd} 23:59:59`
+        return { start, end }
+      }
+
+      function setMode(m) {
+        state.mode = m
+        document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x.dataset.mode === m))
+        reloadTasks()
+      }
+
+      function setDatePreset(p) {
+        state.date_preset = p
+        document.querySelectorAll(".chip").forEach(x => x.classList.toggle("on", x.dataset.preset === p))
+        reloadTasks()
+      }
+
+      function buildQuery() {
+        const qs = new URLSearchParams()
+        if (state.mode === "todo") qs.set("status", "待执行")
+        else if (state.mode === "doing") qs.set("status", "执行中")
+        else if (state.mode === "done") qs.set("status", "已完成")
+        else if (state.mode === "bad") qs.set("status", "异常")
+        if (state.date_preset === "today" || state.date_preset === "tomorrow") {
+          const b = dayBounds(state.date_preset)
+          qs.set("date_from", b.start)
+          qs.set("date_to", b.end)
+        }
+        const q = document.getElementById("q").value.trim()
+        if (q) qs.set("q", q)
+        return qs
+      }
+
+      async function reloadTasks() {
+        document.getElementById("err").textContent = ""
+        if (!state.user) return
+        try {
+          const qs = buildQuery()
+          const tasks = await api(`/api/tasks?${qs.toString()}`)
+          state.tasks = Array.isArray(tasks) ? tasks : []
+          document.getElementById("count").textContent = String(state.tasks.length)
+          renderTasks()
+        } catch (e) {
+          document.getElementById("err").textContent = e.message
+        }
+      }
+
+      function renderTasks() {
+        const box = document.getElementById("list")
+        box.innerHTML = ""
+        if (!state.tasks.length) {
+          box.innerHTML = `<div class="hint">暂无任务</div>`
+          return
+        }
+        for (const t of state.tasks) {
+          const div = document.createElement("div")
+          div.className = "item"
+          div.innerHTML = `
+            <div class="line1">
+              <div class="title">${(t.site_name || t.site_id || "")}</div>
+              <div class="pill">${statusLabel(t.status)}</div>
+            </div>
+            <div class="hint">站点ID：${t.site_id || "-"}</div>
+            <div class="hint">类型：${t.task_type || "-"}｜优先级：${t.priority || "-"}</div>
+            <div class="hint">计划：${fmtDt(t.planned_start_at)} ~ ${fmtDt(t.planned_end_at)}</div>
+            <div class="hint">${t.address || "-"}</div>
+          `
+          div.addEventListener("click", () => openTaskDetail(t))
+          box.appendChild(div)
+        }
+      }
+
+      async function loadRoutePlans() {
+        const hint = document.getElementById("routeHint")
+        if (!state.user) {
+          if (hint) hint.textContent = "登录后可查看线路"
+          return
+        }
+        try {
+          const plans = await api("/api/route_plans/my")
+          state.routePlans = Array.isArray(plans) ? plans : []
+          if (!state.routePlans.length) {
+            if (hint) hint.textContent = "暂无线路，请等待管理员派发"
+          } else {
+            const p = state.routePlans[0]
+            if (hint) {
+              hint.textContent = `最新线路：${p.name || "路线"}｜任务数 ${p.task_count || 0}｜${p.total_km ? p.total_km.toFixed(2) : "-"} km`
+            }
+          }
+        } catch (e) {
+          if (hint) hint.textContent = e.message
+        }
+      }
+
+      async function openRoutePanel() {
+        const mask = document.getElementById("routeMask")
+        if (!mask) return
+        const box = document.getElementById("routeList")
+        box.innerHTML = ""
+        if (!state.routePlans.length) {
+          box.innerHTML = `<div class="hint">暂无线路</div>`
+          mask.style.display = "flex"
+          return
+        }
+        try {
+          const planId = state.routePlans[0].id
+          const data = await api(`/api/route_plans/${planId}`)
+          const tasks = Array.isArray(data.tasks) ? data.tasks : []
+          if (!tasks.length) {
+            box.innerHTML = `<div class="hint">线路暂无任务</div>`
+          } else {
+            const items = []
+            for (let i = 0; i < tasks.length; i++) {
+              const t = tasks[i]
+              items.push(
+                `<div class="item">
+                  <div class="line1">
+                    <div class="title">${i + 1}. ${(t.site_name || t.site_id || "")}</div>
+                    <div class="pill">${statusLabel(t.status)}</div>
+                  </div>
+                  <div class="hint">类型：${t.task_type || "-"}｜优先级：${t.priority || "-"}</div>
+                </div>`
+              )
+            }
+            box.innerHTML = items.join("")
+          }
+        } catch (e) {
+          box.innerHTML = `<div class="err">${e.message}</div>`
+        }
+        mask.style.display = "flex"
+      }
+
+      function closeRoutePanel() {
+        const mask = document.getElementById("routeMask")
+        if (mask) mask.style.display = "none"
+      }
+
+      function openTaskDetail(t) {
+        const el = document.getElementById("detailBox")
+        el.innerHTML = `
+          <div class="card">
+            <div class="row" style="margin-top:0">
+              <div style="font-weight:900;font-size:16px">${(t.site_name || t.site_id || "")}</div>
+              <div class="hint" style="margin-top:4px">站点ID：${t.site_id || "-"}</div>
+            </div>
+            <div class="row hint">状态：${statusLabel(t.status)}｜优先级：${t.priority || "-"}</div>
+            <div class="row hint">类型：${t.task_type || "-"}</div>
+            <div class="row hint">计划：${fmtDt(t.planned_start_at)} ~ ${fmtDt(t.planned_end_at)}</div>
+            <div class="row hint">地址：${t.address || "-"}</div>
+            <div class="row hint">备注：${t.remark || "-"}</div>
+            <div class="row">
+              <label>更新备注（可选）</label>
+              <input id="detailRemark" type="text" placeholder="例如：已到站，准备测试" value="${(t.remark || "").replace(/"/g, "&quot;")}" />
+            </div>
+            <div id="exBox" class="row hidden">
+              <label>异常类型</label>
+              <select id="exType">
+                <option value="">请选择</option>
+                <option value="设备故障">设备故障</option>
+                <option value="信号弱">信号弱</option>
+                <option value="站点无法进入">站点无法进入</option>
+                <option value="其他">其他</option>
+              </select>
+              <div class="row" style="margin-bottom:0">
+                <label>异常描述</label>
+                <textarea id="exDesc" placeholder="请描述现场情况、影响、是否已尝试处理等"></textarea>
+              </div>
+              <div class="hint">标记异常时必须选择类型并填写描述。</div>
+            </div>
+            <div class="row" style="display:flex;gap:10px;flex-wrap:wrap">
+              <button type="button" onclick="updateStatus(${Number(t.id)}, '执行中')">开始执行</button>
+              <button type="button" class="secondary" onclick="updateStatus(${Number(t.id)}, '已完成')">已完成</button>
+              <button type="button" class="secondary" onclick="updateStatus(${Number(t.id)}, '异常')">标记异常</button>
+            </div>
+            <div class="row">
+              <label>上传照片（最多3张，jpg/png/webp）</label>
+              <input id="detailPhotos" type="file" accept="image/*" multiple />
+              <div class="hint">选择后点击“上传照片”。</div>
+            </div>
+            <div class="row" style="display:flex;gap:10px;flex-wrap:wrap">
+              <button type="button" class="secondary" onclick="uploadPhotos(${Number(t.id)})">上传照片</button>
+              <div id="detailOpErr" class="err"></div>
+              <div id="detailOpHint" class="hint"></div>
+            </div>
+            <div class="row" style="display:flex;gap:10px;flex-wrap:wrap">
+              <a class="hint" href="/m/map" target="_blank">打开地图</a>
+            </div>
+          </div>
+        `
+        document.getElementById("detailTitle").textContent = "任务详情"
+        document.getElementById("detailMask").style.display = "flex"
+      }
+
+      function closeDetail() {
+        document.getElementById("detailMask").style.display = "none"
+      }
+
+      async function updateStatus(taskId, status) {
+        const err = document.getElementById("detailOpErr")
+        const hint = document.getElementById("detailOpHint")
+        if (err) err.textContent = ""
+        if (hint) hint.textContent = ""
+        try {
+          const baseRemark = (document.getElementById("detailRemark")?.value || "").trim()
+          let remark = baseRemark
+          if (status === "异常") {
+            const box = document.getElementById("exBox")
+            if (box) box.classList.remove("hidden")
+            const exType = (document.getElementById("exType")?.value || "").trim()
+            const exDesc = (document.getElementById("exDesc")?.value || "").trim()
+            if (!exType) throw new Error("请选择异常类型")
+            if (!exDesc) throw new Error("请填写异常描述")
+            const stamp = fmtDt(new Date().toISOString())
+            const lines = [
+              `[异常] ${stamp}`,
+              `异常类型：${exType}`,
+              `异常描述：${exDesc}`,
+            ]
+            remark = (baseRemark ? (baseRemark + "\n\n") : "") + lines.join("\n")
+          } else {
+            const box = document.getElementById("exBox")
+            if (box) box.classList.add("hidden")
+          }
+          const payload = { status, remark }
+          await api(`/api/tasks/${taskId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+          if (hint) hint.textContent = "已更新"
+          await reloadTasks()
+        } catch (e) {
+          if (err) err.textContent = e.message
+        }
+      }
+
+      async function uploadPhotos(taskId) {
+        const err = document.getElementById("detailOpErr")
+        const hint = document.getElementById("detailOpHint")
+        if (err) err.textContent = ""
+        if (hint) hint.textContent = ""
+        try {
+          const input = document.getElementById("detailPhotos")
+          const files = input && input.files ? Array.from(input.files) : []
+          if (!files.length) throw new Error("请选择照片")
+          if (files.length > 3) throw new Error("最多上传3张照片")
+          const fd = new FormData()
+          for (const f of files) fd.append("files", f, f.name)
+          await api(`/api/tasks/${taskId}/photos`, { method: "POST", body: fd })
+          if (hint) hint.textContent = "已上传"
+        } catch (e) {
+          if (err) err.textContent = e.message
+        }
+      }
+
+      async function init() {
+        markActiveNav()
+        await loadMe()
+        if (state.user) {
+          await reloadTasks()
+          await loadRoutePlans()
+        } else {
+          await loadRoutePlans()
+        }
+        setMode("todo")
+        setDatePreset("all")
+      }
+    </script>
+  </head>
+  <body onload="init()">
+    <div class="wrap">
+      <div class="top">
+        <div>
+          <div class="brand">网优外场智联作业调度</div>
+          <div class="sub">工程师端</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="badge">
+            <span id="userDot" class="dot"></span>
+            <span id="userName">未登录</span>
+          </span>
+          <button id="logoutBtn" class="secondary" onclick="logout()">退出</button>
+        </div>
+      </div>
+
+      <div id="loginCard" class="card">
+        <div class="row">
+          <label>手机号</label>
+          <input id="phone" type="text" placeholder="手机号" />
+        </div>
+        <div class="row">
+          <label>密码</label>
+          <input id="password" type="password" placeholder="密码" />
+        </div>
+        <div class="row" style="display:flex;gap:10px;align-items:center">
+          <button onclick="doLogin()">登录</button>
+          <div id="loginErr" class="err"></div>
+        </div>
+        <div class="hint">登录后查看我的任务；地图入口：/m/map</div>
+      </div>
+
+      <div id="mainCard" class="hidden">
+        <div class="tabs">
+          <div class="tab on" data-mode="todo" onclick="setMode('todo')">待执行</div>
+          <div class="tab" data-mode="doing" onclick="setMode('doing')">执行中</div>
+          <div class="tab" data-mode="done" onclick="setMode('done')">已完成</div>
+          <div class="tab" data-mode="bad" onclick="setMode('bad')">异常</div>
+        </div>
+
+    <div class="card">
+      <div class="row">
+        <label>搜索</label>
+        <input id="q" type="text" placeholder="站点ID/名称/地址/备注" onkeydown="if(event.key==='Enter'){reloadTasks()}" />
+          </div>
+          <div class="row">
+            <label>日期</label>
+            <div class="chips">
+              <div class="chip on" data-preset="all" onclick="setDatePreset('all')">全部</div>
+              <div class="chip" data-preset="today" onclick="setDatePreset('today')">今日</div>
+              <div class="chip" data-preset="tomorrow" onclick="setDatePreset('tomorrow')">明日</div>
+            </div>
+          </div>
+        <div class="row" style="display:flex;gap:10px;align-items:center">
+          <button class="secondary" onclick="reloadTasks()">刷新</button>
+          <a class="hint" href="/m/map" target="_blank">地图</a>
+          <span class="hint">列表：<span id="count">0</span> 条</span>
+        </div>
+        <div id="err" class="err"></div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-weight:800">我的路线</div>
+          <button class="secondary" onclick="openRoutePanel()">查看</button>
+        </div>
+        <div id="routeHint" class="hint">正在加载...</div>
+      </div>
+
+      <div class="row">
+        <div id="list" class="list"></div>
+      </div>
+    </div>
+    </div>
+
+    <div class="bottom-nav">
+      <a data-nav="/m/home" href="/m/home">任务</a>
+      <a data-nav="/m/map" href="/m/map">地图</a>
+    </div>
+
+    <div id="detailMask" class="modalMask" onclick="if(event.target.id==='detailMask'){closeDetail()}">
+      <div class="modal">
+        <div class="modalHead">
+          <div id="detailTitle" class="modalTitle">任务详情</div>
+          <button class="secondary" onclick="closeDetail()">关闭</button>
+        </div>
+        <div class="row" id="detailBox"></div>
+      </div>
+    </div>
+
+    <div id="routeMask" class="modalMask" onclick="if(event.target.id==='routeMask'){closeRoutePanel()}">
+      <div class="modal">
+        <div class="modalHead">
+          <div class="modalTitle">我的路线</div>
+          <button class="secondary" onclick="closeRoutePanel()">关闭</button>
+        </div>
+        <div class="row">
+          <div id="routeList" class="list"></div>
+        </div>
+        <div class="row">
+          <a class="hint" href="/m/map" target="_blank">在地图上查看</a>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+

@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>网优外场智联作业调度 - 任务管理</title>
+    <style>
+      :root {
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #0f172a;
+        --muted: #64748b;
+        --line: #e2e8f0;
+        --primary: #0f172a;
+        --accent: #0ea5e9;
+        --shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+        --shadow-soft: 0 6px 16px rgba(15, 23, 42, 0.06);
+        --radius: 14px;
+      }
+      html, body { height: 100%; margin: 0; background: var(--bg); color: var(--ink); }
+      body { font-family: "HarmonyOS Sans SC", "MiSans", "Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 16px; }
+      #wrap { max-width: 1200px; margin: 0 auto; padding: 18px; }
+      .topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); box-shadow: var(--shadow-soft); }
+      .brand { font-weight: 800; line-height: 1.2; letter-spacing: 0.02em; }
+      .sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+      .userbox { display: flex; align-items: center; gap: 8px; }
+      .badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; background: #fff; }
+      .dot { width: 8px; height: 8px; border-radius: 999px; background: #94a3b8; }
+      .dot.ok { background: #22c55e; }
+      .nav { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: #f8fafc; }
+      .nav a { padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; font-size: 14px; font-weight: 700; color: var(--ink); background: #fff; text-decoration: none; box-shadow: var(--shadow-soft); }
+      .nav a.active { border-color: var(--accent); color: #fff; background: var(--accent); }
+      .card { margin-top: 14px; border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; background: #fff; box-shadow: var(--shadow-soft); }
+      .row { margin: 10px 0; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; }
+      label { display: block; font-size: 13px; color: #475569; margin-bottom: 6px; }
+      input[type="text"], input[type="number"], select { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-size: 14px; }
+      button { padding: 9px 14px; border: 1px solid var(--primary); background: var(--primary); color: #fff; border-radius: 10px; cursor: pointer; font-weight: 700; font-size: 14px; }
+      button.secondary { border: 1px solid var(--line); background: #fff; color: var(--ink); }
+      .hint { font-size: 13px; color: var(--muted); line-height: 1.5; }
+      .err { color: #b91c1c; font-size: 12px; white-space: pre-wrap; }
+      table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+      th, td { border-bottom: 1px solid var(--line); padding: 8px 8px; font-size: 13px; text-align: left; vertical-align: top; }
+      th { background: #f8fafc; position: sticky; top: 0; z-index: 1; }
+      tr:hover td { background: #f8fafc; }
+      .pill { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); background: #fff; }
+      .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+      .modalMask { position: fixed; inset: 0; z-index: 1000; background: rgba(15, 23, 42, 0.35); display: none; align-items: center; justify-content: center; padding: 18px; }
+      .modal { width: min(860px, 100%); background: #fff; border-radius: 16px; border: 1px solid var(--line); padding: 14px; box-shadow: var(--shadow); }
+      .modalHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+      .modalTitle { font-weight: 800; }
+      .modalBody { margin-top: 10px; }
+      .modalGrid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+      .modalGrid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      .footerBtns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+      a { color: var(--accent); text-decoration: none; }
+      .hidden { display: none; }
+    </style>
+    <script>
+      const state = {
+        token: localStorage.getItem("token") || "",
+        user: null,
+        users: [],
+        tasks: [],
+        selected: new Set(),
+        paging: { offset: 0, limit: 200 },
+      }
+
+      function setToken(t) {
+        state.token = t || ""
+        if (state.token) localStorage.setItem("token", state.token)
+        else localStorage.removeItem("token")
+      }
+
+      function markActiveNav() {
+        const path = location.pathname || ""
+        document.querySelectorAll("[data-nav]").forEach(el => {
+          const target = el.getAttribute("data-nav") || ""
+          el.classList.toggle("active", target && path.startsWith(target))
+        })
+      }
+
+      async function api(path, opts = {}) {
+        const headers = Object.assign({}, opts.headers || {})
+        if (state.token) headers["Authorization"] = `Bearer ${state.token}`
+        const res = await fetch(path, Object.assign({}, opts, { headers }))
+        const text = await res.text()
+        let data = null
+        try { data = text ? JSON.parse(text) : null } catch { data = text }
+        if (!res.ok) throw new Error((data && data.detail) ? data.detail : `HTTP ${res.status}`)
+        return data
+      }
+
+      function setUser(u) {
+        state.user = u || null
+        document.getElementById("userName").textContent = state.user ? (state.user.name || state.user.phone) : "未登录"
+        document.getElementById("userDot").classList.toggle("ok", !!state.user)
+        document.getElementById("loginCard").classList.toggle("hidden", !!state.user)
+        document.getElementById("logoutBtn").classList.toggle("hidden", !state.user)
+      }
+
+      async function loadMe() {
+        if (!state.token) { setUser(null); return }
+        try { setUser(await api("/api/auth/me")) } catch { setToken(""); setUser(null) }
+      }
+
+      async function doLogin() {
+        const phone = document.getElementById("phone").value.trim()
+        const password = document.getElementById("password").value
+        document.getElementById("loginErr").textContent = ""
+        try {
+          const data = await api("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone, password }) })
+          setToken(data.access_token)
+          await loadMe()
+          await reloadUsers()
+          await reloadTasks(true)
+        } catch (e) {
+          document.getElementById("loginErr").textContent = e.message
+        }
+      }
+
+      function logout() {
+        setToken("")
+        setUser(null)
+        state.users = []
+        state.tasks = []
+        state.selected = new Set()
+        renderUsers()
+        renderTasks()
+      }
+
+      function fmtDT(v) {
+        if (!v) return ""
+        const s = String(v)
+        return s.replace("T", " ").replace(".000", "")
+      }
+
+      function statusPill(s) {
+        return `<span class="pill">${s || "-"}</span>`
+      }
+
+      function pickUsersSelectOptions(includeEmpty) {
+        const opts = []
+        if (includeEmpty) opts.push(`<option value="">未分配</option>`)
+        for (const u of state.users) opts.push(`<option value="${u.id}">${u.name}（${u.phone}）</option>`)
+        return opts.join("")
+      }
+
+      function renderUsers() {
+        document.getElementById("f_assignee").innerHTML = `<option value="">全部</option><option value="__none__">未分配</option>${pickUsersSelectOptions(false)}`
+        document.getElementById("reassignTo").innerHTML = pickUsersSelectOptions(false)
+        document.getElementById("edit_assignee_id").innerHTML = `<option value="">未分配</option>${pickUsersSelectOptions(false)}`
+      }
+
+      function currentFilters() {
+        const q = document.getElementById("f_q").value.trim()
+        const status = document.getElementById("f_status").value
+        const priority = document.getElementById("f_priority").value
+        const task_type = document.getElementById("f_task_type").value.trim()
+        const assignee = document.getElementById("f_assignee").value
+        return { q, status, priority, task_type, assignee }
+      }
+
+      async function reloadUsers() {
+        if (!state.user) return
+        const users = await api("/api/users?is_active=true")
+        state.users = users || []
+        renderUsers()
+      }
+
+      async function reloadTasks(resetOffset) {
+        document.getElementById("err").textContent = ""
+        if (!state.user) return
+        if (resetOffset) state.paging.offset = 0
+        const f = currentFilters()
+        const qs = new URLSearchParams()
+        if (f.q) qs.set("q", f.q)
+        if (f.status) qs.set("status", f.status)
+        if (f.priority) qs.set("priority", f.priority)
+        if (f.task_type) qs.set("task_type", f.task_type)
+        if (f.assignee === "__none__") qs.set("assignee_none", "true")
+        else if (f.assignee) qs.set("assignee_id", f.assignee)
+        qs.set("offset", String(state.paging.offset))
+        qs.set("limit", String(state.paging.limit))
+        try {
+          state.tasks = await api(`/api/tasks?${qs.toString()}`)
+          document.getElementById("count").textContent = String(state.tasks.length)
+          state.selected = new Set()
+          renderTasks()
+        } catch (e) {
+          document.getElementById("err").textContent = e.message
+        }
+      }
+
+      function updateSelectedUI() {
+        const el = document.getElementById("selectedCount")
+        if (el) el.textContent = String(state.selected.size)
+        const cbAll = document.getElementById("cb_all")
+        if (!cbAll) return
+        const total = (state.tasks || []).length
+        cbAll.indeterminate = state.selected.size > 0 && state.selected.size < total
+        cbAll.checked = total > 0 && state.selected.size === total
+      }
+
+      function renderTasks() {
+        const tbody = document.getElementById("tbody")
+        tbody.innerHTML = ""
+        for (const t of state.tasks || []) {
+          const tr = document.createElement("tr")
+          const checked = state.selected.has(t.id)
+          tr.innerHTML = `
+            <td><input type="checkbox" data-id="${t.id}" ${checked ? "checked" : ""} /></td>
+            <td>${t.id}</td>
+            <td>${t.site_id || ""}<div class="hint">${t.site_name || ""}</div></td>
+            <td>${t.task_type || "-"}</td>
+            <td>${t.priority || "-"}</td>
+            <td>${statusPill(t.status)}</td>
+            <td>${t.assignee ? (t.assignee.name || "") : "-"}</td>
+            <td>${fmtDT(t.planned_start_at)}<div class="hint">${fmtDT(t.planned_end_at)}</div></td>
+            <td>${t.address || "-"}</td>
+            <td class="actions">
+              <button class="secondary" data-act="edit" data-id="${t.id}">编辑</button>
+              <button class="secondary" data-act="del" data-id="${t.id}">删除</button>
+            </td>
+          `
+          tbody.appendChild(tr)
+        }
+
+        tbody.querySelectorAll("input[type=checkbox]").forEach(cb => {
+          cb.addEventListener("change", (e) => {
+            const id = Number(e.target.dataset.id)
+            if (e.target.checked) state.selected.add(id)
+            else state.selected.delete(id)
+            updateSelectedUI()
+          })
+        })
+        tbody.querySelectorAll("button[data-act=edit]").forEach(btn => {
+          btn.addEventListener("click", () => openEditModal(Number(btn.dataset.id)))
+        })
+        tbody.querySelectorAll("button[data-act=del]").forEach(btn => {
+          btn.addEventListener("click", () => deleteOne(Number(btn.dataset.id)))
+        })
+
+        const cbAll = document.getElementById("cb_all")
+        if (cbAll) {
+          cbAll.onchange = (e) => {
+            const checked = !!e.target.checked
+            const ids = (state.tasks || []).map(t => Number(t.id))
+            if (checked) for (const id of ids) state.selected.add(id)
+            else for (const id of ids) state.selected.delete(id)
+            tbody.querySelectorAll("input[type=checkbox]").forEach(cb => { cb.checked = checked })
+            updateSelectedUI()
+          }
+        }
+        updateSelectedUI()
+      }
+
+      function openModal(title) {
+        document.getElementById("modalTitle").textContent = title
+        document.getElementById("modalErr").textContent = ""
+        document.getElementById("modalMask").style.display = "flex"
+      }
+
+      function closeModal() {
+        document.getElementById("modalMask").style.display = "none"
+      }
+
+      function openUserModal() {
+        document.getElementById("user_phone").value = ""
+        document.getElementById("user_name").value = ""
+        document.getElementById("user_role").value = "engineer"
+        document.getElementById("user_password").value = "123456"
+        document.getElementById("userModalErr").textContent = ""
+        document.getElementById("userModalMask").style.display = "flex"
+      }
+
+      function closeUserModal() {
+        document.getElementById("userModalMask").style.display = "none"
+      }
+
+      async function createUser() {
+        document.getElementById("userModalErr").textContent = ""
+        try {
+          const phone = document.getElementById("user_phone").value.trim()
+          const name = document.getElementById("user_name").value.trim()
+          const role = document.getElementById("user_role").value
+          const password = document.getElementById("user_password").value
+          await api("/api/users", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ phone, name, role, password }),
+          })
+          await reloadUsers()
+          closeUserModal()
+        } catch (e) {
+          document.getElementById("userModalErr").textContent = e.message
+        }
+      }
+
+      function clearEditForm() {
+        document.getElementById("edit_id").value = ""
+        document.getElementById("edit_site_id").value = ""
+        document.getElementById("edit_site_name").value = ""
+        document.getElementById("edit_lon").value = ""
+        document.getElementById("edit_lat").value = ""
+        document.getElementById("edit_task_type").value = ""
+        document.getElementById("edit_priority").value = "中"
+        document.getElementById("edit_status").value = "待执行"
+        document.getElementById("edit_planned_start_at").value = ""
+        document.getElementById("edit_planned_end_at").value = ""
+        document.getElementById("edit_address").value = ""
+        document.getElementById("edit_remark").value = ""
+        document.getElementById("edit_assignee_id").value = ""
+      }
+
+      function openCreateModal() {
+        clearEditForm()
+        document.getElementById("modalMode").value = "create"
+        openModal("新增任务")
+      }
+
+      function openEditModal(id) {
+        const t = (state.tasks || []).find(x => x.id === id)
+        if (!t) return
+        clearEditForm()
+        document.getElementById("modalMode").value = "edit"
+        document.getElementById("edit_id").value = String(t.id)
+        document.getElementById("edit_site_id").value = t.site_id || ""
+        document.getElementById("edit_site_name").value = t.site_name || ""
+        document.getElementById("edit_lon").value = String(t.lon)
+        document.getElementById("edit_lat").value = String(t.lat)
+        document.getElementById("edit_task_type").value = t.task_type || ""
+        document.getElementById("edit_priority").value = t.priority || "中"
+        document.getElementById("edit_status").value = t.status || "待执行"
+        document.getElementById("edit_planned_start_at").value = fmtDT(t.planned_start_at)
+        document.getElementById("edit_planned_end_at").value = fmtDT(t.planned_end_at)
+        document.getElementById("edit_address").value = t.address || ""
+        document.getElementById("edit_remark").value = t.remark || ""
+        document.getElementById("edit_assignee_id").value = t.assignee ? String(t.assignee.id) : ""
+        openModal(`编辑任务 #${id}`)
+      }
+
+      async function saveModal() {
+        document.getElementById("modalErr").textContent = ""
+        try {
+          const mode = document.getElementById("modalMode").value
+          const payload = {
+            site_id: document.getElementById("edit_site_id").value.trim(),
+            site_name: document.getElementById("edit_site_name").value.trim(),
+            lon: Number(document.getElementById("edit_lon").value),
+            lat: Number(document.getElementById("edit_lat").value),
+            task_type: document.getElementById("edit_task_type").value.trim(),
+            priority: document.getElementById("edit_priority").value,
+            status: document.getElementById("edit_status").value,
+            planned_start_at: document.getElementById("edit_planned_start_at").value.trim() || null,
+            planned_end_at: document.getElementById("edit_planned_end_at").value.trim() || null,
+            address: document.getElementById("edit_address").value.trim(),
+            remark: document.getElementById("edit_remark").value.trim(),
+          }
+          const aid = document.getElementById("edit_assignee_id").value
+          payload.assignee_id = aid ? Number(aid) : null
+          if (!payload.site_id) throw new Error("站点ID不能为空")
+          if (!isFinite(payload.lon) || !isFinite(payload.lat)) throw new Error("经纬度格式不正确")
+
+          if (mode === "create") {
+            await api("/api/tasks", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+          } else {
+            const id = Number(document.getElementById("edit_id").value)
+            await api(`/api/tasks/${id}/admin`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+          }
+          closeModal()
+          await reloadTasks(false)
+        } catch (e) {
+          document.getElementById("modalErr").textContent = e.message
+        }
+      }
+
+      async function deleteOne(id) {
+        document.getElementById("err").textContent = ""
+        try {
+          await api(`/api/tasks/${id}`, { method: "DELETE" })
+          await reloadTasks(false)
+        } catch (e) {
+          document.getElementById("err").textContent = e.message
+        }
+      }
+
+      async function bulkDelete() {
+        document.getElementById("err").textContent = ""
+        try {
+          const ids = Array.from(state.selected.values())
+          if (ids.length === 0) throw new Error("请先勾选任务")
+          await api("/api/tasks/bulk_delete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ task_ids: ids }) })
+          await reloadTasks(false)
+        } catch (e) {
+          document.getElementById("err").textContent = e.message
+        }
+      }
+
+      async function bulkReassign() {
+        document.getElementById("err").textContent = ""
+        try {
+          const ids = Array.from(state.selected.values())
+          if (ids.length === 0) throw new Error("请先勾选任务")
+          const to = document.getElementById("reassignTo").value
+          if (!to) throw new Error("请选择负责人")
+          await api("/api/tasks/dispatch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ task_ids: ids, assignee_id: Number(to) }) })
+          await reloadTasks(false)
+        } catch (e) {
+          document.getElementById("err").textContent = e.message
+        }
+      }
+
+      function nextPage() {
+        state.paging.offset += state.paging.limit
+        reloadTasks(false)
+      }
+
+      function prevPage() {
+        state.paging.offset -= state.paging.limit
+        if (state.paging.offset < 0) state.paging.offset = 0
+        reloadTasks(false)
+      }
+
+      async function init() {
+        markActiveNav()
+        await loadMe()
+        if (state.user) {
+          await reloadUsers()
+          await reloadTasks(true)
+        }
+      }
+    </script>
+  </head>
+  <body onload="init()">
+      <div id="wrap">
+        <div class="topbar">
+          <div>
+            <div class="brand">网优外场智联作业调度</div>
+            <div class="sub">任务管理</div>
+          </div>
+        <div class="userbox">
+          <a href="/admin/map" target="_blank" class="hint">地图</a>
+          <a href="/admin/import" target="_blank" class="hint">导入</a>
+          <span class="badge">
+            <span id="userDot" class="dot"></span>
+            <span id="userName">未登录</span>
+          </span>
+          <button id="logoutBtn" class="secondary hidden" onclick="logout()">退出</button>
+        </div>
+      </div>
+      <div class="nav">
+        <a data-nav="/admin/map" href="/admin/map">地图</a>
+        <a data-nav="/admin/tasks" href="/admin/tasks">任务</a>
+        <a data-nav="/admin/sectors" href="/admin/sectors">工参</a>
+        <a data-nav="/admin/import" href="/admin/import">导入</a>
+        <a data-nav="/admin/report" href="/admin/report">报表</a>
+      </div>
+
+      <div id="loginCard" class="card">
+        <div class="grid">
+          <div>
+            <label>手机号</label>
+            <input id="phone" type="text" placeholder="管理员手机号" />
+          </div>
+          <div>
+            <label>密码</label>
+            <input id="password" type="password" placeholder="密码" />
+          </div>
+          <div style="display:flex;align-items:flex-end;gap:8px">
+            <button onclick="doLogin()">登录</button>
+          </div>
+          <div>
+            <div class="err" id="loginErr"></div>
+          </div>
+        </div>
+        <div class="hint" style="margin-top:8px">登录后可管理任务：搜索、编辑、删除、添加、重新分配。</div>
+      </div>
+
+      <div class="card">
+        <div class="grid">
+          <div>
+            <label>搜索</label>
+            <input id="f_q" type="text" placeholder="站点ID/名称/地址/备注" onkeydown="if(event.key==='Enter'){reloadTasks(true)}" />
+          </div>
+          <div>
+            <label>状态</label>
+            <select id="f_status" onchange="reloadTasks(true)">
+              <option value="">全部</option>
+              <option value="待执行">待执行</option>
+              <option value="执行中">执行中</option>
+              <option value="已完成">已完成</option>
+              <option value="异常">异常</option>
+            </select>
+          </div>
+          <div>
+            <label>优先级</label>
+            <select id="f_priority" onchange="reloadTasks(true)">
+              <option value="">全部</option>
+              <option value="高">高</option>
+              <option value="中">中</option>
+              <option value="低">低</option>
+            </select>
+          </div>
+          <div>
+            <label>负责人</label>
+            <select id="f_assignee" onchange="reloadTasks(true)"></select>
+          </div>
+        </div>
+        <div class="row">
+          <label>任务类型（可选）</label>
+          <input id="f_task_type" type="text" placeholder="例如：单验/督导/..." onkeydown="if(event.key==='Enter'){reloadTasks(true)}" />
+        </div>
+        <div class="row actions">
+          <button class="secondary" onclick="reloadTasks(true)">查询</button>
+          <button onclick="openCreateModal()">新增任务</button>
+          <button class="secondary" onclick="openUserModal()">新增人员</button>
+          <button class="secondary" onclick="bulkDelete()">删除勾选</button>
+          <select id="reassignTo" style="max-width:320px"></select>
+          <button class="secondary" onclick="bulkReassign()">指派勾选</button>
+          <span class="hint">已勾选：<span id="selectedCount">0</span></span>
+          <span class="hint">当前列表：<span id="count">0</span> 条</span>
+        </div>
+        <div class="err" id="err"></div>
+      </div>
+
+      <div class="card" style="padding:0">
+        <div style="max-height:60vh; overflow:auto; border-radius:14px">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:32px"><input id="cb_all" type="checkbox" /></th>
+                <th style="width:60px">ID</th>
+                <th style="width:200px">站点</th>
+                <th style="width:110px">类型</th>
+                <th style="width:70px">优先级</th>
+                <th style="width:90px">状态</th>
+                <th style="width:140px">负责人</th>
+                <th style="width:180px">计划时间</th>
+                <th>地址</th>
+                <th style="width:160px">操作</th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+        <div class="row actions" style="padding:12px 14px; justify-content:space-between">
+          <div class="hint">分页：每页 200 条，支持搜索过滤后分页浏览。</div>
+          <div class="actions">
+            <button class="secondary" onclick="prevPage()">上一页</button>
+            <button class="secondary" onclick="nextPage()">下一页</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="modalMask" class="modalMask" onclick="if(event.target.id==='modalMask'){closeModal()}">
+      <div class="modal">
+        <div class="modalHead">
+          <div class="modalTitle" id="modalTitle">编辑任务</div>
+          <button class="secondary" onclick="closeModal()">关闭</button>
+        </div>
+        <div class="modalBody">
+          <input id="modalMode" type="hidden" value="edit" />
+          <input id="edit_id" type="hidden" />
+          <div class="modalGrid">
+            <div>
+              <label>站点ID</label>
+              <input id="edit_site_id" type="text" />
+            </div>
+            <div>
+              <label>站点名称</label>
+              <input id="edit_site_name" type="text" />
+            </div>
+            <div>
+              <label>负责人</label>
+              <select id="edit_assignee_id"></select>
+            </div>
+          </div>
+          <div class="modalGrid" style="margin-top:10px">
+            <div>
+              <label>经度</label>
+              <input id="edit_lon" type="number" step="0.000001" />
+            </div>
+            <div>
+              <label>纬度</label>
+              <input id="edit_lat" type="number" step="0.000001" />
+            </div>
+            <div>
+              <label>任务类型</label>
+              <input id="edit_task_type" type="text" />
+            </div>
+          </div>
+          <div class="modalGrid" style="margin-top:10px">
+            <div>
+              <label>优先级</label>
+              <select id="edit_priority">
+                <option value="高">高</option>
+                <option value="中">中</option>
+                <option value="低">低</option>
+              </select>
+            </div>
+            <div>
+              <label>状态</label>
+              <select id="edit_status">
+                <option value="待执行">待执行</option>
+                <option value="执行中">执行中</option>
+                <option value="已完成">已完成</option>
+                <option value="异常">异常</option>
+              </select>
+            </div>
+            <div></div>
+          </div>
+          <div class="modalGrid2" style="margin-top:10px">
+            <div>
+              <label>计划开始时间</label>
+              <input id="edit_planned_start_at" type="text" placeholder="2026-03-12 09:00" />
+            </div>
+            <div>
+              <label>计划完成时间</label>
+              <input id="edit_planned_end_at" type="text" placeholder="2026-03-12 18:00" />
+            </div>
+          </div>
+          <div class="row">
+            <label>地址</label>
+            <input id="edit_address" type="text" />
+          </div>
+          <div class="row">
+            <label>备注</label>
+            <input id="edit_remark" type="text" />
+          </div>
+          <div class="err" id="modalErr"></div>
+          <div class="footerBtns">
+            <button class="secondary" onclick="closeModal()">取消</button>
+            <button onclick="saveModal()">保存</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="userModalMask" class="modalMask" onclick="if(event.target.id==='userModalMask'){closeUserModal()}">
+      <div class="modal" style="width:min(640px, 100%)">
+        <div class="modalHead">
+          <div class="modalTitle">新增人员</div>
+          <button class="secondary" onclick="closeUserModal()">关闭</button>
+        </div>
+        <div class="modalBody">
+          <div class="modalGrid">
+            <div>
+              <label>手机号</label>
+              <input id="user_phone" type="text" placeholder="例如：13900000000" />
+            </div>
+            <div>
+              <label>姓名</label>
+              <input id="user_name" type="text" placeholder="例如：张三" />
+            </div>
+            <div>
+              <label>角色</label>
+              <select id="user_role">
+                <option value="engineer" selected>engineer</option>
+                <option value="admin">admin</option>
+              </select>
+            </div>
+          </div>
+          <div class="row">
+            <label>初始密码</label>
+            <input id="user_password" type="text" />
+            <div class="hint" style="margin-top:6px">创建后可用该手机号+密码登录；人员会出现在“负责人/改派”下拉框里。</div>
+          </div>
+          <div class="err" id="userModalErr"></div>
+          <div class="footerBtns">
+            <button class="secondary" onclick="closeUserModal()">取消</button>
+            <button onclick="createUser()">创建</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+

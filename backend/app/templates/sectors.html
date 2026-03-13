@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>网优外场智联作业调度 - 工参管理</title>
+    <style>
+      :root {
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #0f172a;
+        --muted: #64748b;
+        --line: #e2e8f0;
+        --primary: #0f172a;
+        --accent: #0ea5e9;
+        --shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+        --shadow-soft: 0 6px 16px rgba(15, 23, 42, 0.06);
+        --radius: 14px;
+      }
+      html, body { height: 100%; margin: 0; background: var(--bg); color: var(--ink); }
+      body { font-family: "HarmonyOS Sans SC", "MiSans", "Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 16px; }
+      #wrap { max-width: 1280px; margin: 0 auto; padding: 18px; }
+      .topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); box-shadow: var(--shadow-soft); }
+      .brand { font-weight: 800; line-height: 1.2; letter-spacing: 0.02em; }
+      .sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+      .userbox { display: flex; align-items: center; gap: 8px; }
+      .badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; background: #fff; }
+      .dot { width: 8px; height: 8px; border-radius: 999px; background: #94a3b8; }
+      .dot.ok { background: #22c55e; }
+      .nav { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: #f8fafc; }
+      .nav a { padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; font-size: 14px; font-weight: 700; color: var(--ink); background: #fff; text-decoration: none; box-shadow: var(--shadow-soft); }
+      .nav a.active { border-color: var(--accent); color: #fff; background: var(--accent); }
+      .card { margin-top: 14px; border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; background: #fff; box-shadow: var(--shadow-soft); }
+      .grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; }
+      label { display: block; font-size: 13px; color: #475569; margin-bottom: 6px; }
+      input[type="text"], input[type="number"], input[type="password"], select { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid var(--line); border-radius: 10px; background: #fff; font-size: 14px; }
+      button { padding: 9px 14px; border: 1px solid var(--primary); background: var(--primary); color: #fff; border-radius: 10px; cursor: pointer; font-weight: 700; font-size: 14px; }
+      button.secondary { border: 1px solid var(--line); background: #fff; color: var(--ink); }
+      button.danger { border: 1px solid #b91c1c; background: #b91c1c; }
+      .hint { font-size: 13px; color: var(--muted); line-height: 1.5; }
+      .err { color: #b91c1c; font-size: 12px; white-space: pre-wrap; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { border-bottom: 1px solid var(--line); padding: 8px 8px; font-size: 13px; text-align: left; vertical-align: top; }
+      th { background: #f8fafc; position: sticky; top: 0; z-index: 1; }
+      tr:hover td { background: #f8fafc; }
+      .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+      a { color: var(--accent); text-decoration: none; }
+      .hidden { display: none; }
+      .pill { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); background: #fff; }
+    </style>
+    <script>
+      const state = {
+        token: localStorage.getItem("token") || "",
+        user: null,
+        bands: [],
+        sectors: [],
+        selected: new Set(),
+        paging: { offset: 0, limit: 200 },
+      }
+
+      function setToken(t) {
+        state.token = t || ""
+        if (state.token) localStorage.setItem("token", state.token)
+        else localStorage.removeItem("token")
+      }
+
+      function markActiveNav() {
+        const path = location.pathname || ""
+        document.querySelectorAll("[data-nav]").forEach(el => {
+          const target = el.getAttribute("data-nav") || ""
+          el.classList.toggle("active", target && path.startsWith(target))
+        })
+      }
+
+      async function api(path, opts = {}) {
+        const headers = Object.assign({}, opts.headers || {})
+        if (state.token) headers["Authorization"] = `Bearer ${state.token}`
+        const res = await fetch(path, Object.assign({}, opts, { headers }))
+        const text = await res.text()
+        let data = null
+        try { data = text ? JSON.parse(text) : null } catch { data = text }
+        if (!res.ok) throw new Error((data && data.detail) ? data.detail : `HTTP ${res.status}`)
+        return data
+      }
+
+      function setUser(u) {
+        state.user = u || null
+        document.getElementById("userName").textContent = state.user ? (state.user.name || state.user.phone) : "未登录"
+        document.getElementById("userDot").classList.toggle("ok", !!state.user)
+        document.getElementById("loginCard").classList.toggle("hidden", !!state.user)
+        document.getElementById("logoutBtn").classList.toggle("hidden", !state.user)
+      }
+
+      async function loadMe() {
+        if (!state.token) { setUser(null); return }
+        try { setUser(await api("/api/auth/me")) } catch { setToken(""); setUser(null) }
+      }
+
+      async function doLogin() {
+        const phone = document.getElementById("phone").value.trim()
+        const password = document.getElementById("password").value
+        document.getElementById("loginErr").textContent = ""
+        try {
+          const data = await api("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone, password }) })
+          setToken(data.access_token)
+          await loadMe()
+          await reloadBands()
+          await reloadSectors(true)
+        } catch (e) {
+          document.getElementById("loginErr").textContent = e.message
+        }
+      }
+
+      function logout() {
+        setToken("")
+        setUser(null)
+        state.bands = []
+        state.sectors = []
+        state.selected = new Set()
+        renderBands()
+        renderSectors()
+      }
+
+      function selectedNetworks() {
+        const nets = []
+        if (document.getElementById("net_4g").checked) nets.push("4G")
+        if (document.getElementById("net_5g").checked) nets.push("5G")
+        return nets
+      }
+
+      function selectedBands() {
+        return Array.from(document.getElementById("f_band").selectedOptions).map(o => o.value).filter(Boolean)
+      }
+
+      async function reloadBands() {
+        if (!state.user) return
+        const qs = new URLSearchParams()
+        for (const n of selectedNetworks()) qs.append("network", n)
+        const bands = await api(`/api/sectors/bands?${qs.toString()}`)
+        state.bands = bands || []
+        renderBands()
+      }
+
+      function renderBands() {
+        const sel = document.getElementById("f_band")
+        const prev = new Set(Array.from(sel.selectedOptions).map(o => o.value))
+        sel.innerHTML = ""
+        for (const b of state.bands || []) {
+          const opt = document.createElement("option")
+          opt.value = String(b)
+          opt.textContent = String(b)
+          if (prev.has(opt.value)) opt.selected = true
+          sel.appendChild(opt)
+        }
+      }
+
+      function currentQuery() {
+        const q = document.getElementById("f_q").value.trim()
+        return q
+      }
+
+      async function reloadSectors(resetOffset) {
+        document.getElementById("err").textContent = ""
+        if (!state.user) return
+        if (resetOffset) state.paging.offset = 0
+        const qs = new URLSearchParams()
+        for (const n of selectedNetworks()) qs.append("network", n)
+        for (const b of selectedBands()) qs.append("band", b)
+        const q = currentQuery()
+        if (q) qs.set("q", q)
+        qs.set("offset", String(state.paging.offset))
+        qs.set("limit", String(state.paging.limit))
+        try {
+          state.sectors = await api(`/api/sectors/admin_list?${qs.toString()}`)
+          document.getElementById("count").textContent = String(state.sectors.length)
+          state.selected = new Set()
+          renderSectors()
+        } catch (e) {
+          document.getElementById("err").textContent = e.message
+        }
+      }
+
+      function renderSectors() {
+        const tbody = document.getElementById("tbody")
+        tbody.innerHTML = ""
+        for (const s of state.sectors || []) {
+          const tr = document.createElement("tr")
+          const checked = state.selected.has(s.id)
+          tr.innerHTML = `
+            <td><input type="checkbox" data-id="${s.id}" ${checked ? "checked" : ""} /></td>
+            <td>${s.id}</td>
+            <td><span class="pill">${s.network || "-"}</span></td>
+            <td>${s.cell_id || ""}<div class="hint">${s.cell_name || ""}</div></td>
+            <td>${s.band || "-"}</td>
+            <td>${s.freq || "-"}</td>
+            <td>${s.azimuth_deg}</td>
+            <td>${s.lon}, ${s.lat}</td>
+            <td class="actions">
+              <a href="/admin/map" target="_blank" class="hint">打开地图</a>
+              <button class="secondary" data-act="del" data-id="${s.id}">删除</button>
+            </td>
+          `
+          tbody.appendChild(tr)
+        }
+
+        tbody.querySelectorAll("input[type=checkbox]").forEach(cb => {
+          cb.addEventListener("change", (e) => {
+            const id = Number(e.target.dataset.id)
+            if (e.target.checked) state.selected.add(id)
+            else state.selected.delete(id)
+          })
+        })
+        tbody.querySelectorAll("button[data-act=del]").forEach(btn => {
+          btn.addEventListener("click", () => deleteOne(Number(btn.dataset.id)))
+        })
+      }
+
+      async function deleteOne(id) {
+        document.getElementById("err").textContent = ""
+        try {
+          if (!confirm(`确认删除工参 #${id} 吗？`)) return
+          await api(`/api/sectors/${id}`, { method: "DELETE" })
+          await reloadSectors(false)
+        } catch (e) {
+          document.getElementById("err").textContent = e.message
+        }
+      }
+
+      async function bulkDelete() {
+        document.getElementById("err").textContent = ""
+        try {
+          const ids = Array.from(state.selected.values())
+          if (ids.length === 0) throw new Error("请先勾选小区")
+          if (!confirm(`确认删除已勾选工参（${ids.length}条）吗？`)) return
+          await api("/api/sectors/bulk_delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sector_ids: ids }),
+          })
+          await reloadSectors(false)
+        } catch (e) {
+          document.getElementById("err").textContent = e.message
+        }
+      }
+
+      function nextPage() {
+        state.paging.offset += state.paging.limit
+        reloadSectors(false)
+      }
+
+      function prevPage() {
+        state.paging.offset -= state.paging.limit
+        if (state.paging.offset < 0) state.paging.offset = 0
+        reloadSectors(false)
+      }
+
+      async function init() {
+        markActiveNav()
+        await loadMe()
+        if (state.user) {
+          await reloadBands()
+          await reloadSectors(true)
+        }
+      }
+    </script>
+  </head>
+  <body onload="init()">
+    <div id="wrap">
+      <div class="topbar">
+        <div>
+          <div class="brand">网优外场智联作业调度</div>
+          <div class="sub">工参管理</div>
+        </div>
+        <div class="userbox">
+          <a href="/admin/map" target="_blank" class="hint">地图</a>
+          <a href="/admin/import" target="_blank" class="hint">导入</a>
+          <a href="/admin/tasks" target="_blank" class="hint">任务</a>
+          <span class="badge">
+            <span id="userDot" class="dot"></span>
+            <span id="userName">未登录</span>
+          </span>
+          <button id="logoutBtn" class="secondary hidden" onclick="logout()">退出</button>
+        </div>
+      </div>
+      <div class="nav">
+        <a data-nav="/admin/map" href="/admin/map">地图</a>
+        <a data-nav="/admin/tasks" href="/admin/tasks">任务</a>
+        <a data-nav="/admin/sectors" href="/admin/sectors">工参</a>
+        <a data-nav="/admin/import" href="/admin/import">导入</a>
+        <a data-nav="/admin/report" href="/admin/report">报表</a>
+      </div>
+
+      <div id="loginCard" class="card">
+        <div class="grid">
+          <div>
+            <label>手机号</label>
+            <input id="phone" type="text" placeholder="管理员手机号" />
+          </div>
+          <div>
+            <label>密码</label>
+            <input id="password" type="password" placeholder="密码" />
+          </div>
+          <div style="display:flex;align-items:flex-end;gap:8px">
+            <button onclick="doLogin()">登录</button>
+          </div>
+          <div>
+            <div class="err" id="loginErr"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="grid">
+          <div>
+            <label>搜索</label>
+            <input id="f_q" type="text" placeholder="CELLID/小区名称/任意字段" onkeydown="if(event.key==='Enter'){reloadSectors(true)}" />
+          </div>
+          <div>
+            <label>网络</label>
+            <div class="actions" style="margin-top:6px">
+              <label class="hint" style="margin:0"><input id="net_4g" type="checkbox" checked onchange="reloadBands(); reloadSectors(true)" /> 4G</label>
+              <label class="hint" style="margin:0"><input id="net_5g" type="checkbox" checked onchange="reloadBands(); reloadSectors(true)" /> 5G</label>
+            </div>
+          </div>
+          <div>
+            <label>频段（多选）</label>
+            <select id="f_band" multiple size="6" onchange="reloadSectors(true)"></select>
+          </div>
+          <div>
+            <label>操作</label>
+            <div class="actions" style="margin-top:6px">
+              <button class="secondary" onclick="reloadSectors(true)">查询</button>
+              <button class="danger" onclick="bulkDelete()">删除勾选</button>
+            </div>
+            <div class="hint" style="margin-top:8px">当前列表：<span id="count">0</span> 条</div>
+          </div>
+        </div>
+        <div class="err" id="err"></div>
+      </div>
+
+      <div class="card" style="padding:0">
+        <div style="max-height:62vh; overflow:auto; border-radius:14px">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:32px"></th>
+                <th style="width:70px">ID</th>
+                <th style="width:70px">网络</th>
+                <th style="width:360px">小区</th>
+                <th style="width:70px">频段</th>
+                <th style="width:110px">频点</th>
+                <th style="width:70px">方位角</th>
+                <th style="width:180px">经纬度</th>
+                <th style="width:140px">操作</th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+        <div class="actions" style="padding:12px 14px; justify-content:space-between">
+          <div class="hint">分页：每页 200 条（按筛选条件分页）。</div>
+          <div class="actions">
+            <button class="secondary" onclick="prevPage()">上一页</button>
+            <button class="secondary" onclick="nextPage()">下一页</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+
