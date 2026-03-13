@@ -1,0 +1,1904 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>网优外场智联作业调度 - 管理端地图</title>
+    <style>
+      :root {
+        --bg: #f6f7fb;
+        --panel: #ffffff;
+        --ink: #0f172a;
+        --muted: #64748b;
+        --line: #e2e8f0;
+        --primary: #0f172a;
+        --accent: #0ea5e9;
+        --accent-2: #f59e0b;
+        --ok: #22c55e;
+        --danger: #ef4444;
+        --shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+        --shadow-soft: 0 6px 16px rgba(15, 23, 42, 0.06);
+        --radius: 14px;
+      }
+      html, body { height: 100%; margin: 0; background: var(--bg); color: var(--ink); }
+      body { font-family: "HarmonyOS Sans SC", "MiSans", "Source Han Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 16px; }
+      #wrap { height: 100%; display: grid; grid-template-columns: 380px 1fr; background: var(--bg); }
+      #panel { padding: 16px; border-right: 1px solid var(--line); background: var(--panel); overflow: auto; box-shadow: var(--shadow-soft); }
+      #map { height: 100%; }
+      .row { margin: 12px 0; }
+      .topbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid #eef2f7; }
+      .brand { font-weight: 800; letter-spacing: 0.02em; color: var(--ink); line-height: 1.2; }
+      .sub { font-size: 13px; color: var(--muted); margin-top: 4px; }
+      .panel-close { display: none; justify-content: flex-end; margin-bottom: 6px; }
+      .userbox { display: flex; align-items: center; gap: 8px; }
+      .badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 12px; color: var(--ink); background: #fff; }
+      .dot { width: 8px; height: 8px; border-radius: 999px; background: #94a3b8; }
+      .dot.ok { background: var(--ok); }
+      .nav { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: #f8fafc; }
+      .nav a { padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; font-size: 14px; font-weight: 700; color: var(--ink); background: #fff; text-decoration: none; box-shadow: var(--shadow-soft); }
+      .nav a.active { border-color: var(--accent); color: #fff; background: var(--accent); }
+      .card { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; background: #fff; box-shadow: var(--shadow-soft); }
+      .section { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; background: #fff; box-shadow: var(--shadow-soft); }
+      .section-title { font-size: 12px; color: var(--muted); letter-spacing: 0.16em; text-transform: uppercase; font-weight: 800; }
+      label { display: block; font-size: 13px; color: #475569; margin-bottom: 6px; }
+      input[type="text"], input[type="password"], select { width: 100%; padding: 10px; box-sizing: border-box; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); font-size: 14px; }
+      button { padding: 9px 14px; border: 1px solid var(--primary); background: var(--primary); color: #fff; border-radius: 10px; cursor: pointer; font-weight: 700; font-size: 14px; }
+      button.secondary { border: 1px solid var(--line); background: #fff; color: var(--ink); }
+      button.ghost { border: 1px solid transparent; background: transparent; color: var(--muted); }
+      button.link { border: 1px solid transparent; background: transparent; color: var(--accent); padding: 0; }
+      .hint { font-size: 13px; color: var(--muted); line-height: 1.5; }
+      .err { color: #b91c1c; font-size: 12px; }
+      .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; margin-right: 6px; border: 1px solid var(--line); background: #fff; }
+      .kv { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+      .divider { height: 1px; background: #eef2f7; margin: 12px 0; }
+      a { color: var(--accent); text-decoration: none; }
+      .hidden { display: none; }
+      .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+      .modalMask { position: fixed; inset: 0; z-index: 1200; background: rgba(15, 23, 42, 0.35); display: none; align-items: center; justify-content: center; padding: 18px; }
+      .modal { width: min(860px, 100%); background: #fff; border-radius: 16px; border: 1px solid var(--line); padding: 14px; box-shadow: var(--shadow); }
+      .modalHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+      .modalTitle { font-weight: 800; color: var(--ink); }
+      .modalMask.bottom { align-items: flex-end; padding: 0; z-index: 1400; }
+      .sheet { width: min(860px, 100%); background: #fff; border-radius: 18px 18px 0 0; border: 1px solid var(--line); padding: 14px 14px 78px; box-shadow: var(--shadow); max-height: 75vh; overflow: auto; }
+      #drawerMask { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.25); display: none; z-index: 1299; }
+      #drawerBtn { position: fixed; left: 12px; top: 12px; z-index: 1298; box-shadow: var(--shadow); }
+      .route-list { display: grid; gap: 8px; max-height: 260px; overflow: auto; margin-top: 8px; }
+      .route-item { padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: #fff; cursor: pointer; }
+      .route-badge { width: 22px; height: 22px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; border: 2px solid #fff; box-shadow: var(--shadow-soft); }
+      .task-marker { position: relative; width: 18px; height: 18px; border-radius: 999px; border: 2px solid #fff; box-shadow: 0 6px 14px rgba(15, 23, 42, 0.25); }
+      .task-marker::after { content: ""; position: absolute; inset: -8px; border-radius: 999px; border: 2px solid currentColor; opacity: 0.6; animation: pulse 1.6s ease-out infinite; }
+      .task-marker.wait { background: #0ea5e9; color: #0ea5e9; }
+      .task-marker.doing { background: #f59e0b; color: #f59e0b; }
+      .task-marker.done { background: #22c55e; color: #22c55e; }
+      .task-marker.bad { background: #ef4444; color: #ef4444; }
+      @keyframes pulse {
+        0% { transform: scale(0.6); opacity: 0.7; }
+        70% { transform: scale(1.25); opacity: 0; }
+        100% { transform: scale(1.25); opacity: 0; }
+      }
+      .bottom-nav { position: fixed; left: 0; right: 0; bottom: 0; display: none; gap: 8px; padding: 8px 12px; background: rgba(255,255,255,0.98); border-top: 1px solid var(--line); z-index: 1301; }
+      .route-fab { position: fixed; right: 14px; bottom: 78px; z-index: 1302; display: none; }
+      .route-fab button { padding: 10px 12px; border-radius: 999px; box-shadow: var(--shadow); }
+      .bottom-nav a { flex: 1; text-align: center; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); text-decoration: none; font-weight: 700; background: #fff; }
+      .bottom-nav a.active { border-color: var(--accent); color: var(--accent); background: #eef9ff; }
+      html[data-mode="mobile"] body { padding-bottom: 62px; }
+      html[data-mode="mobile"] #adminNav { display: none; }
+      html[data-mode="mobile"] .admin-only { display: none; }
+      html[data-mode="admin"] #mobileNav { display: none; }
+      @media (max-width: 900px) {
+        #wrap { grid-template-columns: 1fr; }
+        #panel { position: fixed; left: 0; top: 0; bottom: 0; width: min(360px, 92vw); transform: translateX(-105%); transition: transform 180ms ease; z-index: 1300; }
+        #panel.open { transform: translateX(0); }
+        #drawerBtn { display: inline-flex; }
+        .panel-close { display: flex; }
+        html[data-mode="mobile"] .bottom-nav { display: flex; }
+        html[data-mode="mobile"] .route-fab { display: block; }
+      }
+      @media (min-width: 901px) {
+        #drawerBtn { display: none; }
+      }
+    </style>
+    <script>
+      const IS_MOBILE = location.pathname.startsWith("/m/")
+      document.documentElement.dataset.mode = IS_MOBILE ? "mobile" : "admin"
+      const state = {
+        token: localStorage.getItem("token") || "",
+        map: null,
+        markers: [],
+        taskMarkers: new Map(),
+        taskById: new Map(),
+        lastTasks: [],
+        sectorLayer: null,
+        sectorOverlays: [],
+        sectorAbort: null,
+        sectorDetailCache: new Map(),
+        assignees: [],
+        filterPresets: [],
+        routeStart: null,
+        routeStartMarker: null,
+        pickStartMode: false,
+        activeTask: null,
+        fitTarget: "tasks",
+        hasFitView: false,
+        user: null,
+        sectorReloadTimer: null,
+        route: null,
+        routeLine: null,
+        routeMarkers: [],
+        myPlans: [],
+      }
+
+      function loadTaskFilterCache() {
+        let obj = null
+        try { obj = JSON.parse(localStorage.getItem("map_task_filters") || "null") } catch (_) { obj = null }
+        obj = obj && typeof obj === "object" ? obj : {}
+        try { document.getElementById("f_status").value = obj.status || "" } catch (_) { }
+        try { document.getElementById("f_task_type").value = obj.task_type || "" } catch (_) { }
+        try { document.getElementById("f_priority").value = obj.priority || "" } catch (_) { }
+        try { document.getElementById("f_assignee").value = obj.assignee_id || "" } catch (_) { }
+        try { document.getElementById("f_date_from").value = obj.date_from || "" } catch (_) { }
+        try { document.getElementById("f_date_to").value = obj.date_to || "" } catch (_) { }
+        try { document.getElementById("f_near").checked = !!obj.near } catch (_) { }
+        try { document.getElementById("f_radius_km").value = obj.radius_km || "5" } catch (_) { }
+      }
+
+      function saveTaskFilterCache() {
+        const obj = collectTaskFilters()
+        try { localStorage.setItem("map_task_filters", JSON.stringify(obj)) } catch (_) { }
+      }
+
+      function collectTaskFilters() {
+        const obj = {
+          status: "",
+          task_type: "",
+          priority: "",
+          assignee_id: "",
+          date_from: "",
+          date_to: "",
+          near: false,
+          radius_km: "5",
+        }
+        try { obj.status = document.getElementById("f_status").value || "" } catch (_) { }
+        try { obj.task_type = document.getElementById("f_task_type").value || "" } catch (_) { }
+        try { obj.priority = document.getElementById("f_priority").value || "" } catch (_) { }
+        try { obj.assignee_id = document.getElementById("f_assignee").value || "" } catch (_) { }
+        try { obj.date_from = document.getElementById("f_date_from").value || "" } catch (_) { }
+        try { obj.date_to = document.getElementById("f_date_to").value || "" } catch (_) { }
+        try { obj.near = !!document.getElementById("f_near").checked } catch (_) { }
+        try { obj.radius_km = document.getElementById("f_radius_km").value || "5" } catch (_) { }
+        return obj
+      }
+
+      function markActiveNav() {
+        const path = location.pathname || ""
+        document.querySelectorAll("[data-nav]").forEach(el => {
+          const target = el.getAttribute("data-nav") || ""
+          const active = target && path.startsWith(target)
+          el.classList.toggle("active", active)
+        })
+      }
+
+      function loadFilterPresets() {
+        let arr = []
+        try { arr = JSON.parse(localStorage.getItem("map_filter_presets") || "[]") } catch (_) { arr = [] }
+        if (!Array.isArray(arr)) arr = []
+        state.filterPresets = arr.filter(x => x && typeof x.name === "string" && typeof x.filters === "object")
+        renderFilterPresets()
+      }
+
+      function renderFilterPresets() {
+        const sel = document.getElementById("preset_list")
+        if (!sel) return
+        sel.innerHTML = `<option value="">选择方案</option>`
+        for (const p of state.filterPresets) {
+          const opt = document.createElement("option")
+          opt.value = p.name
+          opt.textContent = p.name
+          sel.appendChild(opt)
+        }
+      }
+
+      function saveFilterPreset() {
+        const name = document.getElementById("preset_name").value.trim()
+        const hint = document.getElementById("presetHint")
+        if (!name) {
+          if (hint) hint.textContent = "请输入方案名称"
+          return
+        }
+        const filters = collectTaskFilters()
+        const idx = state.filterPresets.findIndex(p => p.name === name)
+        if (idx >= 0) state.filterPresets[idx] = { name, filters }
+        else state.filterPresets.push({ name, filters })
+        try { localStorage.setItem("map_filter_presets", JSON.stringify(state.filterPresets)) } catch (_) { }
+        renderFilterPresets()
+        if (hint) hint.textContent = "方案已保存"
+      }
+
+      function applyFilterPreset() {
+        const sel = document.getElementById("preset_list")
+        const name = sel ? sel.value : ""
+        if (!name) return
+        const p = state.filterPresets.find(x => x.name === name)
+        if (!p) return
+        const f = p.filters || {}
+        try { document.getElementById("f_status").value = f.status || "" } catch (_) { }
+        try { document.getElementById("f_task_type").value = f.task_type || "" } catch (_) { }
+        try { document.getElementById("f_priority").value = f.priority || "" } catch (_) { }
+        try { document.getElementById("f_assignee").value = f.assignee_id || "" } catch (_) { }
+        try { document.getElementById("f_date_from").value = f.date_from || "" } catch (_) { }
+        try { document.getElementById("f_date_to").value = f.date_to || "" } catch (_) { }
+        try { document.getElementById("f_near").checked = !!f.near } catch (_) { }
+        try { document.getElementById("f_radius_km").value = f.radius_km || "5" } catch (_) { }
+        reloadAll()
+      }
+
+      function deleteFilterPreset() {
+        const sel = document.getElementById("preset_list")
+        const name = sel ? sel.value : ""
+        const hint = document.getElementById("presetHint")
+        if (!name) return
+        if (!confirm(`确认删除筛选方案【${name}】？`)) return
+        state.filterPresets = state.filterPresets.filter(x => x.name !== name)
+        try { localStorage.setItem("map_filter_presets", JSON.stringify(state.filterPresets)) } catch (_) { }
+        renderFilterPresets()
+        if (hint) hint.textContent = "方案已删除"
+      }
+
+      function resetFilters() {
+        try { document.getElementById("f_status").value = "" } catch (_) { }
+        try { document.getElementById("f_task_type").value = "" } catch (_) { }
+        try { document.getElementById("f_priority").value = "" } catch (_) { }
+        try { document.getElementById("f_assignee").value = "" } catch (_) { }
+        try { document.getElementById("f_date_from").value = "" } catch (_) { }
+        try { document.getElementById("f_date_to").value = "" } catch (_) { }
+        try { document.getElementById("f_near").checked = false } catch (_) { }
+        try { document.getElementById("f_radius_km").value = "5" } catch (_) { }
+        reloadAll()
+      }
+
+      function quickLocate() {
+        const q = document.getElementById("quick_q").value.trim()
+        const hint = document.getElementById("quickHint")
+        if (!q) {
+          if (hint) hint.textContent = "请输入站点ID或站点名称"
+          return
+        }
+        const tasks = Array.isArray(state.lastTasks) ? state.lastTasks : []
+        const hits = tasks.filter(t => {
+          const sid = String(t.site_id || "")
+          const name = String(t.site_name || "")
+          return sid.includes(q) || name.includes(q)
+        })
+        if (!hits.length) {
+          if (hint) hint.textContent = "没有匹配的任务"
+          return
+        }
+        if (hint) hint.textContent = `匹配 ${hits.length} 条`
+        if (hits.length === 1) focusTask(hits[0].id)
+        else openTaskPicker(hits)
+      }
+
+      function haversineKm(lat1, lon1, lat2, lon2) {
+        const toRad = (v) => (v * Math.PI) / 180
+        const R = 6371
+        const dLat = toRad(lat2 - lat1)
+        const dLon = toRad(lon2 - lon1)
+        const a =
+          Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+          Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+          Math.sin(dLon / 2) * Math.sin(dLon / 2)
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+        return R * c
+      }
+
+      function setRouteStartPoint(lon, lat) {
+        if (!isFinite(lon) || !isFinite(lat)) return
+        state.routeStart = { lon, lat }
+        const hint = document.getElementById("startHint")
+        if (hint) hint.textContent = `已选起点：${lon.toFixed(6)}, ${lat.toFixed(6)}（优先于任务起点）`
+        try {
+          if (!state.routeStartMarker) {
+            state.routeStartMarker = new AMap.Marker({
+              position: [lon, lat],
+              content: `<div class="route-badge">起</div>`,
+              offset: new AMap.Pixel(-11, -11),
+              zIndex: 520,
+            })
+            state.routeStartMarker.setMap(state.map)
+          } else {
+            state.routeStartMarker.setPosition([lon, lat])
+            state.routeStartMarker.setMap(state.map)
+          }
+        } catch (_) {
+        }
+      }
+
+      function clearRouteStartPoint() {
+        state.routeStart = null
+        state.pickStartMode = false
+        const hint = document.getElementById("startHint")
+        if (hint) hint.textContent = ""
+        const btn = document.getElementById("pickStartBtn")
+        if (btn) btn.textContent = "地图选起点"
+        if (state.routeStartMarker) {
+          try { state.routeStartMarker.setMap(null) } catch (_) { }
+        }
+        if (state.route && state.route.startPoint) {
+          clearRoute()
+        }
+      }
+
+      function enableStartPick() {
+        state.pickStartMode = true
+        const hint = document.getElementById("startHint")
+        if (hint) hint.textContent = "请在地图上点击设置起点"
+        const btn = document.getElementById("pickStartBtn")
+        if (btn) btn.textContent = "点击地图选点中..."
+      }
+
+      function renderRouteStartOptions(tasks) {
+        const sel = document.getElementById("route_start")
+        if (!sel) return
+        const cur = sel.value
+        sel.innerHTML = `<option value="">请选择起点任务</option>`
+        const list = Array.isArray(tasks) ? tasks.slice() : []
+        list.sort((a, b) => String(a.site_id || "").localeCompare(String(b.site_id || "")))
+        for (const t of list) {
+          const opt = document.createElement("option")
+          opt.value = String(t.id)
+          opt.textContent = `${t.site_id || "-"}｜${t.site_name || ""}`
+          sel.appendChild(opt)
+        }
+        if (cur) sel.value = cur
+      }
+
+      function renderRouteAssignees() {
+        const sel = document.getElementById("route_assignee")
+        if (!sel) return
+        const cur = sel.value
+        sel.innerHTML = `<option value="">选择负责人</option>`
+        for (const u of state.assignees || []) {
+          const opt = document.createElement("option")
+          opt.value = String(u.id)
+          opt.textContent = u.name || u.phone || String(u.id)
+          sel.appendChild(opt)
+        }
+        if (cur) sel.value = cur
+      }
+
+      function clearRouteOverlays() {
+        if (state.routeLine) {
+          try { state.routeLine.setMap(null) } catch (_) { }
+        }
+        state.routeLine = null
+        if (Array.isArray(state.routeMarkers)) {
+          for (const m of state.routeMarkers) {
+            try { m.setMap(null) } catch (_) { }
+          }
+        }
+        state.routeMarkers = []
+      }
+
+      function clearRoute() {
+        state.route = null
+        clearRouteOverlays()
+        document.getElementById("routeCount").textContent = "0"
+        document.getElementById("routeTotal").textContent = "-"
+        document.getElementById("routeList").innerHTML = ""
+        const hint = document.getElementById("routeHint")
+        if (hint) hint.textContent = ""
+        try { localStorage.removeItem("map_route_plan") } catch (_) { }
+      }
+
+      function buildRoute() {
+        const hint = document.getElementById("routeHint")
+        if (hint) hint.textContent = ""
+        const tasks = Array.isArray(state.lastTasks) ? state.lastTasks.slice() : []
+        if (!tasks.length) {
+          if (hint) hint.textContent = "当前筛选无任务，无法规划路线"
+          return
+        }
+        const startPoint = state.routeStart
+        let startId = Number(document.getElementById("route_start").value)
+        let cur = null
+        const order = []
+        if (startPoint) {
+          cur = { lon: startPoint.lon, lat: startPoint.lat }
+        } else {
+          if (!startId) {
+            if (hint) hint.textContent = "请选择起点任务或使用地图选起点"
+            return
+          }
+          const byId = new Map(tasks.map(t => [Number(t.id), t]))
+          const start = byId.get(startId)
+          if (!start) {
+            if (hint) hint.textContent = "起点不在当前筛选结果中"
+            return
+          }
+          order.push(start)
+          cur = start
+        }
+        const remaining = tasks.filter(t => !order.some(x => Number(x.id) === Number(t.id)))
+        while (remaining.length > 0) {
+          let bestIdx = 0
+          let bestDist = Infinity
+          for (let i = 0; i < remaining.length; i++) {
+            const t = remaining[i]
+            const d = haversineKm(cur.lat, cur.lon, t.lat, t.lon)
+            if (d < bestDist) {
+              bestDist = d
+              bestIdx = i
+            }
+          }
+          const next = remaining.splice(bestIdx, 1)[0]
+          order.push(next)
+          cur = next
+        }
+        const segments = []
+        let total = 0
+        for (let i = 0; i < order.length; i++) {
+          const prev = i === 0 ? null : order[i - 1]
+          const d = prev
+            ? haversineKm(prev.lat, prev.lon, order[i].lat, order[i].lon)
+            : (startPoint ? haversineKm(startPoint.lat, startPoint.lon, order[i].lat, order[i].lon) : 0)
+          total += d
+          segments.push({ dist: d, total })
+        }
+        state.route = {
+          orderIds: order.map(t => Number(t.id)),
+          totalKm: total,
+          segments,
+          startPoint: startPoint ? { lon: startPoint.lon, lat: startPoint.lat } : null,
+          startId: startPoint ? null : startId,
+        }
+        renderRoute(order, segments, startPoint)
+        try {
+          localStorage.setItem(
+            "map_route_plan",
+            JSON.stringify({ task_ids: state.route.orderIds, start_id: startPoint ? null : startId, start_point: startPoint })
+          )
+        } catch (_) { }
+        if (hint) hint.textContent = "路线已生成"
+      }
+
+      function renderRoute(order, segments, startPoint) {
+        clearRouteOverlays()
+        if (!order.length) return
+        document.getElementById("routeCount").textContent = String(order.length)
+        document.getElementById("routeTotal").textContent = `${segments[segments.length - 1].total.toFixed(2)} km`
+
+        const path = []
+        if (startPoint) path.push([startPoint.lon, startPoint.lat])
+        for (const t of order) path.push([t.lon, t.lat])
+        try {
+          state.routeLine = new AMap.Polyline({
+            path,
+            strokeColor: "#0ea5e9",
+            strokeOpacity: 0.9,
+            strokeWeight: 4,
+            zIndex: 450,
+          })
+          state.routeLine.setMap(state.map)
+        } catch (_) {
+        }
+
+        state.routeMarkers = []
+        for (let i = 0; i < order.length; i++) {
+          const t = order[i]
+          try {
+            const mk = new AMap.Marker({
+              position: [t.lon, t.lat],
+              content: `<div class="route-badge">${i + 1}</div>`,
+              offset: new AMap.Pixel(-11, -11),
+              zIndex: 500,
+            })
+            mk.setMap(state.map)
+            state.routeMarkers.push(mk)
+          } catch (_) {
+          }
+        }
+        renderRouteList(order, segments, startPoint)
+      }
+
+      function renderRouteList(order, segments, startPoint) {
+        const box = document.getElementById("routeList")
+        if (!box) return
+        const items = []
+        if (startPoint) {
+          items.push(
+            `<div class="route-item">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span class="route-badge" style="width:20px;height:20px">起</span>
+                <div style="font-weight:800">自定义起点</div>
+              </div>
+              <div class="hint">${startPoint.lon.toFixed(6)}, ${startPoint.lat.toFixed(6)}</div>
+            </div>`
+          )
+        }
+        for (let i = 0; i < order.length; i++) {
+          const t = order[i]
+          const seg = segments[i]
+          items.push(
+            `<div class="route-item" data-route-id="${escapeHtml(t.id)}">
+              <div style="display:flex;align-items:center;gap:8px">
+                <span class="route-badge" style="width:20px;height:20px">${i + 1}</span>
+                <div style="font-weight:800;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(t.site_name || t.site_id || "")}</div>
+              </div>
+              <div class="hint">类型：${escapeHtml(t.task_type || "-")}｜优先级：${escapeHtml(t.priority || "-")}</div>
+              <div class="hint">本段：${seg.dist.toFixed(2)} km｜累计：${seg.total.toFixed(2)} km</div>
+            </div>`
+          )
+        }
+        box.innerHTML = items.join("")
+        box.querySelectorAll("[data-route-id]").forEach(el => {
+          el.addEventListener("click", () => {
+            const id = Number(el.dataset.routeId)
+            focusTask(id)
+          })
+        })
+      }
+
+      function exportRouteCsv() {
+        if (!state.route || !Array.isArray(state.route.orderIds)) return
+        const rows = []
+        if (state.route.startPoint) {
+          rows.push(`# 起点坐标: ${state.route.startPoint.lon}, ${state.route.startPoint.lat}`)
+        }
+        rows.push(["序号", "站点ID", "站点名称", "任务类型", "优先级", "本段公里", "累计公里"].join(","))
+        const byId = new Map((state.lastTasks || []).map(t => [Number(t.id), t]))
+        for (let i = 0; i < state.route.orderIds.length; i++) {
+          const id = state.route.orderIds[i]
+          const t = byId.get(id)
+          const seg = state.route.segments[i]
+          if (!t) continue
+          rows.push([
+            String(i + 1),
+            `"${String(t.site_id || "").replace(/"/g, '""')}"`,
+            `"${String(t.site_name || "").replace(/"/g, '""')}"`,
+            `"${String(t.task_type || "").replace(/"/g, '""')}"`,
+            `"${String(t.priority || "").replace(/"/g, '""')}"`,
+            seg.dist.toFixed(2),
+            seg.total.toFixed(2),
+          ].join(","))
+        }
+        const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8;" })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement("a")
+        a.href = url
+        a.download = `route_plan_${Date.now()}.csv`
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        URL.revokeObjectURL(url)
+      }
+
+      async function dispatchRoute() {
+        const hint = document.getElementById("routeHint")
+        if (!state.route || !Array.isArray(state.route.orderIds) || !state.route.orderIds.length) {
+          if (hint) hint.textContent = "请先生成路线"
+          return
+        }
+        const assigneeId = Number(document.getElementById("route_assignee").value)
+        if (!assigneeId) {
+          if (hint) hint.textContent = "请选择负责人"
+          return
+        }
+        try {
+          await api("/api/tasks/dispatch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ task_ids: state.route.orderIds, assignee_id: assigneeId }),
+          })
+          try {
+            const now = new Date()
+            const name = `路线-${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`
+            await api("/api/route_plans", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                assignee_id: assigneeId,
+                task_ids: state.route.orderIds,
+                name,
+                start_lon: state.route.startPoint ? state.route.startPoint.lon : null,
+                start_lat: state.route.startPoint ? state.route.startPoint.lat : null,
+                total_km: state.route.totalKm || null,
+              }),
+            })
+          } catch (_) {
+          }
+          if (hint) hint.textContent = "派发成功"
+        } catch (e) {
+          if (hint) hint.textContent = e.message
+        }
+      }
+
+      function restoreRouteFromCache() {
+        let obj = null
+        try { obj = JSON.parse(localStorage.getItem("map_route_plan") || "null") } catch (_) { obj = null }
+        if (!obj || !Array.isArray(obj.task_ids) || !obj.task_ids.length) return
+        const byId = new Map((state.lastTasks || []).map(t => [Number(t.id), t]))
+        const order = []
+        for (const id of obj.task_ids) {
+          const t = byId.get(Number(id))
+          if (!t) return
+          order.push(t)
+        }
+        const segments = []
+        let total = 0
+        for (let i = 0; i < order.length; i++) {
+          const prev = i === 0 ? null : order[i - 1]
+          const d = prev
+            ? haversineKm(prev.lat, prev.lon, order[i].lat, order[i].lon)
+            : (obj.start_point ? haversineKm(obj.start_point.lat, obj.start_point.lon, order[i].lat, order[i].lon) : 0)
+          total += d
+          segments.push({ dist: d, total })
+        }
+        state.route = {
+          orderIds: order.map(t => Number(t.id)),
+          totalKm: total,
+          segments,
+          startPoint: obj.start_point || null,
+          startId: obj.start_id || null,
+        }
+        if (obj.start_point && typeof obj.start_point.lon === "number" && typeof obj.start_point.lat === "number") {
+          setRouteStartPoint(obj.start_point.lon, obj.start_point.lat)
+        }
+        renderRoute(order, segments, obj.start_point || null)
+        if (obj.start_id) {
+          const sel = document.getElementById("route_start")
+          if (sel) sel.value = String(obj.start_id)
+        }
+      }
+
+      async function openMyRoutePanel() {
+        if (!IS_MOBILE) return
+        try {
+          const plans = await api("/api/route_plans/my")
+          state.myPlans = Array.isArray(plans) ? plans : []
+        } catch (_) {
+          state.myPlans = []
+        }
+        const box = document.getElementById("myRouteList")
+        box.innerHTML = ""
+        if (!state.myPlans.length) {
+          box.innerHTML = `<div class="hint">暂无线路，请等待管理员派发</div>`
+        } else {
+          const items = []
+          for (const p of state.myPlans) {
+            items.push(
+              `<div class="route-item" data-plan-id="${escapeHtml(p.id)}">
+                <div style="font-weight:800">${escapeHtml(p.name || "路线")}</div>
+                <div class="hint">任务数：${p.task_count || 0}｜总距离：${p.total_km ? p.total_km.toFixed(2) : "-"} km</div>
+                <div class="hint">创建：${escapeHtml(p.created_at || "")}</div>
+              </div>`
+            )
+          }
+          box.innerHTML = items.join("")
+          box.querySelectorAll("[data-plan-id]").forEach(el => {
+            el.addEventListener("click", () => {
+              const id = Number(el.dataset.planId)
+              if (id) viewMyRoute(id)
+            })
+          })
+        }
+        const mask = document.getElementById("myRouteMask")
+        if (mask) mask.style.display = "flex"
+      }
+
+      function closeMyRoutePanel() {
+        const mask = document.getElementById("myRouteMask")
+        if (mask) mask.style.display = "none"
+        const box = document.getElementById("myRouteDetail")
+        if (box) box.innerHTML = ""
+      }
+
+      async function viewMyRoute(planId) {
+        try {
+          const data = await api(`/api/route_plans/${planId}`)
+          const tasks = Array.isArray(data.tasks) ? data.tasks : []
+          const plan = data.plan || {}
+          const startPoint = (plan.start_lon != null && plan.start_lat != null)
+            ? { lon: Number(plan.start_lon), lat: Number(plan.start_lat) }
+            : null
+          const segments = []
+          let total = 0
+          for (let i = 0; i < tasks.length; i++) {
+            const prev = i === 0 ? null : tasks[i - 1]
+            const d = prev
+              ? haversineKm(prev.lat, prev.lon, tasks[i].lat, tasks[i].lon)
+              : (startPoint ? haversineKm(startPoint.lat, startPoint.lon, tasks[i].lat, tasks[i].lon) : 0)
+            total += d
+            segments.push({ dist: d, total })
+          }
+          renderRoute(tasks, segments, startPoint)
+          state.route = { orderIds: tasks.map(t => Number(t.id)), totalKm: total, segments, startPoint }
+          const box = document.getElementById("myRouteDetail")
+          if (box) {
+            const items = []
+            if (startPoint) {
+              items.push(
+                `<div class="route-item">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span class="route-badge" style="width:20px;height:20px">起</span>
+                    <div style="font-weight:800">起点坐标</div>
+                  </div>
+                  <div class="hint">${startPoint.lon.toFixed(6)}, ${startPoint.lat.toFixed(6)}</div>
+                </div>`
+              )
+            }
+            for (let i = 0; i < tasks.length; i++) {
+              const t = tasks[i]
+              const seg = segments[i]
+              items.push(
+                `<div class="route-item" data-task-id="${escapeHtml(t.id)}">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <span class="route-badge" style="width:20px;height:20px">${i + 1}</span>
+                    <div style="font-weight:800;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(t.site_name || t.site_id || "")}</div>
+                  </div>
+                  <div class="hint">类型：${escapeHtml(t.task_type || "-")}｜优先级：${escapeHtml(t.priority || "-")}</div>
+                  <div class="hint">本段：${seg.dist.toFixed(2)} km｜累计：${seg.total.toFixed(2)} km</div>
+                </div>`
+              )
+            }
+            box.innerHTML = items.join("")
+            box.querySelectorAll("[data-task-id]").forEach(el => {
+              el.addEventListener("click", () => {
+                const id = Number(el.dataset.taskId)
+                focusTask(id)
+              })
+            })
+          }
+        } catch (e) {
+          const box = document.getElementById("myRouteDetail")
+          if (box) box.innerHTML = `<div class="err">${escapeHtml(e.message || e)}</div>`
+        }
+      }
+
+      function escapeHtml(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;")
+      }
+
+      function openPanel() {
+        const p = document.getElementById("panel")
+        if (p) p.classList.add("open")
+        const m = document.getElementById("drawerMask")
+        if (m) m.style.display = "block"
+      }
+
+      function closePanel() {
+        const p = document.getElementById("panel")
+        if (p) p.classList.remove("open")
+        const m = document.getElementById("drawerMask")
+        if (m) m.style.display = "none"
+      }
+
+      function syncPanelLayout() {
+        const m = document.getElementById("drawerMask")
+        if (!m) return
+        if (window.innerWidth <= 900) {
+          m.style.display = m.style.display === "block" ? "block" : "none"
+        } else {
+          m.style.display = "none"
+          const p = document.getElementById("panel")
+          if (p) p.classList.remove("open")
+        }
+      }
+
+      async function getSectorDetail(sectorId) {
+        if (!sectorId) return null
+        if (state.sectorDetailCache.has(sectorId)) return state.sectorDetailCache.get(sectorId)
+        const d = await api(`/api/sectors/${sectorId}`)
+        state.sectorDetailCache.set(sectorId, d)
+        return d
+      }
+
+      async function getSectorRelatedTasks(sectorId) {
+        if (!sectorId) return []
+        const qs = new URLSearchParams()
+        const radius = document.getElementById("sector_radius") ? document.getElementById("sector_radius").value : ""
+        if (radius) qs.set("radius_m", radius)
+        return await api(`/api/sectors/${sectorId}/related_tasks?${qs.toString()}`)
+      }
+
+      function buildTaskInfoHtml(t) {
+        if (!t) return `<div class="hint">未获取到任务信息</div>`
+        return `
+          <div style="min-width:240px">
+            <div><b>${escapeHtml(t.site_name || "")}</b></div>
+            <div class="hint">站点ID：${escapeHtml(t.site_id || "")}</div>
+            <div class="hint">类型：${escapeHtml(t.task_type || "-")}</div>
+            <div class="hint">优先级：${escapeHtml(t.priority || "-")}</div>
+            <div class="hint">状态：<span class="pill">${escapeHtml(t.status || "")}</span></div>
+            <div class="hint">负责人：${escapeHtml(t.assignee ? (t.assignee.name || t.assignee.phone || "") : "-")}</div>
+            <div class="hint">地址：${escapeHtml(t.address || "-")}</div>
+            <div class="hint">备注：${escapeHtml(t.remark || "-")}</div>
+          </div>
+        `
+      }
+
+      function buildSectorDetailHtml(detail) {
+        if (!detail) return `<div class="hint">未获取到小区信息</div>`
+        const isMobile = IS_MOBILE || window.innerWidth <= 900
+        let raw = null
+        try { raw = detail.raw_fields_json ? JSON.parse(detail.raw_fields_json) : null } catch (_) { raw = null }
+        const keys = raw && typeof raw === "object" ? Object.keys(raw) : []
+        function pickRawLabel(cands) {
+          for (const k of (cands || [])) {
+            if (raw && Object.prototype.hasOwnProperty.call(raw, k) && String(raw[k] ?? "").trim() !== "") return String(raw[k])
+          }
+          for (const k of keys) {
+            for (const c of (cands || [])) {
+              if (String(k).includes(String(c)) && String(raw[k] ?? "").trim() !== "") return String(raw[k])
+            }
+          }
+          return ""
+        }
+        const cellName = pickRawLabel(["小区名称", "小区名", "cellname", "cell_name", "CELLNAME"]) || ""
+        const eci = pickRawLabel(["ECI", "eci"]) || ""
+        const rows = []
+        for (const k of keys) {
+          const v = raw[k]
+          rows.push(
+            `<div style="display:grid;grid-template-columns: 140px 1fr;gap:10px;padding:8px 10px;border:1px solid #eef2f7;border-radius:10px;background:#fff">
+              <div style="font-size:12px;color:#6b7280;letter-spacing:0.02em">${escapeHtml(k)}</div>
+              <div style="font-size:13px;color:#111827;word-break:break-all">${escapeHtml(v)}</div>
+            </div>`
+          )
+        }
+        const head = `
+          <div style="border-radius:14px;padding:${isMobile ? "10px" : "12px"};background:linear-gradient(180deg,#0b1220 0%, #111827 100%);color:#fff">
+            <div style="display:flex;justify-content:space-between;gap:14px;align-items:flex-start">
+              <div style="min-width:0">
+                <div style="font-weight:800;font-size:${isMobile ? "13px" : "14px"};line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(cellName || detail.cell_id || "")}</div>
+                <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px">
+                  <span style="font-size:${isMobile ? "11px" : "12px"};padding:2px 8px;border-radius:999px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.16)">${escapeHtml(detail.network || "")}</span>
+                  <span style="font-size:${isMobile ? "11px" : "12px"};padding:2px 8px;border-radius:999px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.16)">Band ${escapeHtml(detail.band || "-")}</span>
+                  <span style="font-size:${isMobile ? "11px" : "12px"};padding:2px 8px;border-radius:999px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.16)">Freq ${escapeHtml(detail.freq || "-")}</span>
+                  ${eci ? `<span style="font-size:${isMobile ? "11px" : "12px"};padding:2px 8px;border-radius:999px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.16)">ECI ${escapeHtml(eci)}</span>` : ""}
+                </div>
+              </div>
+              <div style="text-align:right;flex:0 0 auto">
+                <div style="font-size:${isMobile ? "11px" : "12px"};opacity:0.9">${escapeHtml(detail.lon)}, ${escapeHtml(detail.lat)}</div>
+                <div style="margin-top:6px;font-size:${isMobile ? "11px" : "12px"};opacity:0.9">Az ${escapeHtml(detail.azimuth_deg)}</div>
+              </div>
+            </div>
+          </div>
+          <div style="height:1px;background:#eef2f7;margin:10px 0"></div>
+        `
+        const action = `
+          <div style="display:flex;gap:10px;align-items:center;margin:10px 0" onclick="event.stopPropagation()">
+            <button type="button" id="sectorRelBtn_${escapeHtml(detail.id)}" data-sector-id="${escapeHtml(detail.id)}">查看关联任务</button>
+            <div class="hint" id="sectorRelHint_${escapeHtml(detail.id)}"></div>
+          </div>
+          <div id="sectorRelBox_${escapeHtml(detail.id)}" style="display:none;gap:8px"></div>
+          <div style="height:1px;background:#eef2f7;margin:10px 0"></div>
+        `
+        const body = rows.length
+          ? `<div class="sector-detail-scroll" style="max-height:${isMobile ? "220px" : "300px"};overflow:auto;padding-right:8px;display:grid;gap:8px" onwheel="event.stopPropagation()">${rows.join("")}</div>`
+          : `<div class="hint">raw_fields_json 为空</div>`
+        return `<div style="min-width:${isMobile ? "260px" : "360px"};max-width:${isMobile ? "82vw" : "520px"}">${head}${action}${body}</div>`
+      }
+
+      function selectedBandValues() {
+        const sel = document.getElementById("f_band")
+        if (!sel) return []
+        return Array.from(sel.selectedOptions).map(o => o.value).filter(Boolean)
+      }
+
+      async function reloadBandOptions() {
+        try {
+          const n4 = document.getElementById("net_4g").checked
+          const n5 = document.getElementById("net_5g").checked
+          const qs = new URLSearchParams()
+          if (n4) qs.append("network", "4G")
+          if (n5) qs.append("network", "5G")
+          const bands = await api(`/api/sectors/bands?${qs.toString()}`)
+          const sel = document.getElementById("f_band")
+          const prev = new Set(Array.from(sel.selectedOptions).map(o => o.value))
+          sel.innerHTML = ""
+          for (const b of (bands || [])) {
+            const opt = document.createElement("option")
+            opt.value = String(b)
+            opt.textContent = String(b)
+            if (prev.has(opt.value)) opt.selected = true
+            sel.appendChild(opt)
+          }
+        } catch (_) {
+        }
+      }
+
+      function setToken(t) {
+        state.token = t || ""
+        if (state.token) localStorage.setItem("token", state.token)
+        else localStorage.removeItem("token")
+        document.getElementById("token").value = state.token
+      }
+
+      function setUser(u) {
+        state.user = u || null
+        const name = state.user ? (state.user.name || state.user.phone || "已登录") : "未登录"
+        document.getElementById("userName").textContent = name
+        document.getElementById("userDot").classList.toggle("ok", !!state.user)
+        document.getElementById("loginCard").classList.toggle("hidden", !!state.user)
+        document.getElementById("logoutBtn").classList.toggle("hidden", !state.user)
+        const isAdmin = !!(state.user && state.user.role === "admin")
+        const dispatchRow = document.getElementById("routeDispatchRow")
+        if (dispatchRow) dispatchRow.classList.toggle("hidden", !isAdmin)
+      }
+
+      async function loadAssignees() {
+        if (!state.user || state.user.role !== "admin") return
+        try {
+          const users = await api("/api/users")
+          state.assignees = Array.isArray(users) ? users : []
+          const sel = document.getElementById("f_assignee")
+          if (!sel) return
+          const cur = sel.value
+          sel.innerHTML = `<option value="">全部</option>`
+          for (const u of state.assignees) {
+            const opt = document.createElement("option")
+            opt.value = String(u.id)
+            opt.textContent = u.name || u.phone || String(u.id)
+            sel.appendChild(opt)
+          }
+          sel.value = cur || ""
+          renderRouteAssignees()
+        } catch (_) {
+        }
+      }
+
+      async function api(path, opts = {}) {
+        const headers = Object.assign({}, opts.headers || {})
+        if (state.token) headers["Authorization"] = `Bearer ${state.token}`
+        const res = await fetch(path, Object.assign({}, opts, { headers }))
+        const text = await res.text()
+        let data = null
+        try { data = text ? JSON.parse(text) : null } catch { data = text }
+        if (!res.ok) throw new Error((data && data.detail) ? data.detail : `HTTP ${res.status}`)
+        return data
+      }
+
+      async function loadMe() {
+        if (!state.token) {
+          setUser(null)
+          return
+        }
+        try {
+          const u = await api("/api/auth/me")
+          setUser(u)
+          await loadAssignees()
+        } catch (_) {
+          setToken("")
+          setUser(null)
+        }
+      }
+
+      async function doLogin() {
+        const phone = document.getElementById("phone").value.trim()
+        const password = document.getElementById("password").value
+        document.getElementById("loginErr").textContent = ""
+        try {
+          const data = await api("/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ phone, password }),
+          })
+          setToken(data.access_token)
+          await loadMe()
+          await reloadAll()
+          closePanel()
+        } catch (e) {
+          document.getElementById("loginErr").textContent = e.message
+        }
+      }
+
+      function logout() {
+        setToken("")
+        setUser(null)
+        if (state.sectorLayer) state.sectorLayer.setMap(null)
+        state.sectorLayer = null
+        clearMarkers()
+        document.getElementById("reloadErr").textContent = ""
+      }
+
+      function taskColor(status) {
+        if (status === "待执行") return "#007aff"
+        if (status === "执行中") return "#ffcc00"
+        if (status === "已完成") return "#34c759"
+        if (status === "异常") return "#ff3b30"
+        return "#8e8e93"
+      }
+
+      function taskClass(status) {
+        if (status === "待执行") return "wait"
+        if (status === "执行中") return "doing"
+        if (status === "已完成") return "done"
+        if (status === "异常") return "bad"
+        return "wait"
+      }
+
+      function openTaskAction(t) {
+        if (!t) return
+        state.activeTask = t
+        const box = document.getElementById("taskActionBox")
+        if (!box) return
+        box.innerHTML = `
+          <div style="display:grid;gap:6px">
+            <div style="font-weight:900;font-size:16px">${escapeHtml(t.site_name || t.site_id || "")}</div>
+            <div class="hint">站点ID：${escapeHtml(t.site_id || "-")}</div>
+            <div class="hint">类型：${escapeHtml(t.task_type || "-")}｜优先级：${escapeHtml(t.priority || "-")}</div>
+            <div class="hint">状态：${escapeHtml(t.status || "-")}</div>
+            <div class="hint">地址：${escapeHtml(t.address || "-")}</div>
+          </div>
+        `
+        const err = document.getElementById("taskActionErr")
+        if (err) err.textContent = ""
+        const ab = document.getElementById("taskAbType")
+        if (ab) ab.value = ""
+        const rm = document.getElementById("taskRemark")
+        if (rm) rm.value = ""
+        const mask = document.getElementById("taskActionMask")
+        if (mask) mask.style.display = "flex"
+      }
+
+      function closeTaskAction() {
+        const mask = document.getElementById("taskActionMask")
+        if (mask) mask.style.display = "none"
+        state.activeTask = null
+      }
+
+      async function applyTaskStatus(status) {
+        if (!state.activeTask) return
+        const remark = document.getElementById("taskRemark").value.trim()
+        const abnormalType = document.getElementById("taskAbType").value
+        let finalRemark = remark
+        if (status === "异常" && abnormalType) {
+          finalRemark = `异常类型:${abnormalType}` + (remark ? `；${remark}` : "")
+        }
+        try {
+          await api(`/api/tasks/${state.activeTask.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status, remark: finalRemark }),
+          })
+          closeTaskAction()
+          await reloadAll()
+        } catch (e) {
+          const err = document.getElementById("taskActionErr")
+          if (err) err.textContent = e.message
+        }
+      }
+
+      function clearMarkers() {
+        for (const m of state.markers) state.map.remove(m)
+        state.markers = []
+        state.taskMarkers = new Map()
+        state.taskById = new Map()
+      }
+
+      async function loadTasks() {
+        const f = collectTaskFilters()
+        saveTaskFilterCache()
+        const qs = new URLSearchParams()
+        if (f.status) qs.set("status", f.status)
+        if (f.task_type) qs.set("task_type", f.task_type)
+        if (f.priority) qs.set("priority", f.priority)
+        if (f.assignee_id) qs.set("assignee_id", f.assignee_id)
+        if (f.date_from) qs.set("date_from", f.date_from)
+        if (f.date_to) qs.set("date_to", f.date_to)
+        if (f.near) {
+          try {
+            const c = state.map.getCenter()
+            qs.set("near_lon", String(c.lng))
+            qs.set("near_lat", String(c.lat))
+            qs.set("radius_km", String(Number(f.radius_km || "5") || 5))
+          } catch (_) {
+          }
+        }
+        const tasks = await api(`/api/tasks?${qs.toString()}`)
+        document.getElementById("taskCount").textContent = String(tasks.length)
+        state.lastTasks = Array.isArray(tasks) ? tasks : []
+        renderRouteStartOptions(state.lastTasks)
+        clearMarkers()
+        for (const t of tasks) {
+          state.taskById.set(Number(t.id), t)
+          let marker = null
+          if (IS_MOBILE) {
+            marker = new AMap.Marker({
+              position: [t.lon, t.lat],
+              content: `<div class="task-marker ${taskClass(t.status)}"></div>`,
+              offset: new AMap.Pixel(-9, -9),
+              zIndex: 30,
+            })
+            marker.on("click", () => {
+              openTaskAction(t)
+            })
+          } else {
+            marker = new AMap.CircleMarker({
+              center: [t.lon, t.lat],
+              radius: 6,
+              fillColor: taskColor(t.status),
+              fillOpacity: 0.9,
+              strokeColor: "#111827",
+              strokeOpacity: 0.2,
+              strokeWeight: 1,
+              zIndex: 20,
+            })
+            marker.on("click", () => {
+              const info = new AMap.InfoWindow({ content: buildTaskInfoHtml(t), offset: new AMap.Pixel(0, -10) })
+              info.open(state.map, marker.getCenter())
+            })
+          }
+          marker.setExtData({ taskId: Number(t.id) })
+          marker.setMap(state.map)
+          state.markers.push(marker)
+          state.taskMarkers.set(Number(t.id), marker)
+        }
+        if (state.route && Array.isArray(state.route.orderIds) && state.route.orderIds.length) {
+          const startPoint = state.route.startPoint || null
+          const byId = new Map(state.lastTasks.map(t => [Number(t.id), t]))
+          const order = []
+          for (const id of state.route.orderIds) {
+            const t = byId.get(Number(id))
+            if (!t) {
+              clearRoute()
+              return tasks
+            }
+            order.push(t)
+          }
+          const segments = []
+          let total = 0
+          for (let i = 0; i < order.length; i++) {
+            const prev = i === 0 ? null : order[i - 1]
+            const d = prev
+              ? haversineKm(prev.lat, prev.lon, order[i].lat, order[i].lon)
+              : (startPoint ? haversineKm(startPoint.lat, startPoint.lon, order[i].lat, order[i].lon) : 0)
+            total += d
+            segments.push({ dist: d, total })
+          }
+          state.route = { orderIds: order.map(t => Number(t.id)), totalKm: total, segments, startPoint }
+          renderRoute(order, segments, startPoint)
+        } else {
+          restoreRouteFromCache()
+        }
+        return tasks
+      }
+
+      function openTaskPicker(tasks) {
+        const arr = Array.isArray(tasks) ? tasks : []
+        const el = document.getElementById("taskPickList")
+        const count = document.getElementById("taskPickCount")
+        count.textContent = String(arr.length)
+        if (!arr.length) {
+          el.innerHTML = `<div class="hint">没有匹配的任务</div>`
+        } else {
+          const items = []
+          for (const t of arr) {
+            items.push(
+              `<div class="card" style="padding:10px;border-radius:12px;cursor:pointer" data-task-id="${escapeHtml(t.id)}">
+                <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+                  <div style="font-weight:700;color:#111827;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(t.site_name || t.site_id || "")}</div>
+                  <div class="pill">${escapeHtml(t.status || "")}</div>
+                </div>
+                <div class="hint">类型：${escapeHtml(t.task_type || "-")}｜优先级：${escapeHtml(t.priority || "-")}｜负责人：${escapeHtml(t.assignee ? (t.assignee.name || t.assignee.phone || "") : "-")}</div>
+                <div class="hint">地址：${escapeHtml(t.address || "-")}</div>
+              </div>`
+            )
+          }
+          el.innerHTML = items.join("")
+          el.querySelectorAll("[data-task-id]").forEach(x => {
+            x.addEventListener("click", () => {
+              const id = Number(x.dataset.taskId)
+              focusTask(id)
+            })
+          })
+        }
+        document.getElementById("taskPickMask").style.display = "flex"
+      }
+
+      function closeTaskPicker() {
+        document.getElementById("taskPickMask").style.display = "none"
+      }
+
+      function focusTask(taskId) {
+        const t = state.taskById.get(Number(taskId))
+        const m = state.taskMarkers.get(Number(taskId))
+        if (!t || !m) return
+        try {
+          const z = state.map.getZoom()
+          if (typeof z === "number" && z < 16) state.map.setZoom(16)
+        } catch (_) {
+        }
+        try { state.map.setCenter([t.lon, t.lat]) } catch (_) { }
+        try {
+          const info = new AMap.InfoWindow({ content: buildTaskInfoHtml(t), offset: new AMap.Pixel(0, -10) })
+          info.open(state.map, m.getCenter())
+        } catch (_) {
+        }
+      }
+
+      async function searchTasksPopup() {
+        document.getElementById("reloadErr").textContent = ""
+        try {
+          await loadMe()
+          const tasks = await loadTasks()
+          openTaskPicker(tasks)
+          if (IS_MOBILE) closePanel()
+        } catch (e) {
+          document.getElementById("reloadErr").textContent = e.message
+        }
+      }
+
+      async function loadSectorsExtent() {
+        const qs = new URLSearchParams()
+        const n4 = document.getElementById("net_4g").checked
+        const n5 = document.getElementById("net_5g").checked
+        const bands = selectedBandValues()
+        if (n4) qs.append("network", "4G")
+        if (n5) qs.append("network", "5G")
+        if (bands.length) {
+          for (const b of bands) qs.append("band", b)
+        }
+        return await api(`/api/sectors/extent?${qs.toString()}`)
+      }
+
+      async function loadSectors() {
+        const show = document.getElementById("layer_sector").checked
+        if (!show) {
+          if (state.sectorLayer) state.sectorLayer.setMap(null)
+          state.sectorLayer = null
+          if (Array.isArray(state.sectorOverlays)) {
+            try { state.map && state.map.remove(state.sectorOverlays) } catch (_) { }
+            for (const o of state.sectorOverlays) {
+              try { o.setMap(null) } catch (_) { }
+            }
+          }
+          state.sectorOverlays = []
+          document.getElementById("sectorCount").textContent = "-"
+          document.getElementById("sectorRender").textContent = "-"
+          return null
+        }
+        if (!window.AMap) throw new Error("高德JS API未加载")
+        if (state.sectorAbort) {
+          try { state.sectorAbort.abort() } catch (_) { }
+        }
+        state.sectorAbort = new AbortController()
+        const qs = new URLSearchParams()
+        const n4 = document.getElementById("net_4g").checked
+        const n5 = document.getElementById("net_5g").checked
+        const bands = selectedBandValues()
+        if (n4) qs.append("network", "4G")
+        if (n5) qs.append("network", "5G")
+        if (bands.length) {
+          for (const b of bands) qs.append("band", b)
+        }
+        const radius = document.getElementById("sector_radius").value
+        if (radius) qs.set("radius_m", radius)
+        try {
+          const b = state.map.getBounds()
+          const sw = b.getSouthWest()
+          const ne = b.getNorthEast()
+          qs.set("min_lng", String(sw.lng))
+          qs.set("min_lat", String(sw.lat))
+          qs.set("max_lng", String(ne.lng))
+          qs.set("max_lat", String(ne.lat))
+        } catch (_) {
+        }
+        let limit = 400
+        try {
+          const z = state.map.getZoom()
+          if (z >= 14) limit = 1200
+          else if (z >= 12) limit = 800
+          else limit = 400
+        } catch (_) {
+        }
+        qs.set("limit", String(limit))
+        let geojson = null
+        try {
+          geojson = await api(`/api/sectors/geojson?${qs.toString()}`, { signal: state.sectorAbort.signal })
+        } catch (e) {
+          if (e && (e.name === "AbortError" || String(e.message || "").includes("aborted"))) return null
+          throw e
+        }
+        const meta = geojson && geojson.meta ? geojson.meta : null
+        if (meta && typeof meta.returned === "number") {
+          const t = (typeof meta.total === "number") ? `${meta.returned}/${meta.total}` : String(meta.returned)
+          document.getElementById("sectorCount").textContent = t
+        } else {
+          document.getElementById("sectorCount").textContent = Array.isArray(geojson.features) ? String(geojson.features.length) : "-"
+        }
+        if (state.sectorLayer) state.sectorLayer.setMap(null)
+        state.sectorLayer = null
+        if (Array.isArray(state.sectorOverlays)) {
+          try { state.map && state.map.remove(state.sectorOverlays) } catch (_) { }
+          for (const o of state.sectorOverlays) {
+            try { o.setMap(null) } catch (_) { }
+          }
+        }
+        const fc = { type: "FeatureCollection", features: Array.isArray(geojson.features) ? geojson.features : [] }
+        const overlays = []
+        const stats = { total: fc.features.length, noGeom: 0, badCoords: 0, poly: 0, multi: 0, other: 0 }
+
+        function extractRings(geom) {
+          if (!geom || !geom.type) return []
+          const t = String(geom.type)
+          const c = geom.coordinates
+          if (!Array.isArray(c)) return []
+          if (t === "Polygon") {
+            if (Array.isArray(c[0]) && typeof c[0][0] === "number") return [c]
+            return c
+          }
+          if (t === "MultiPolygon") {
+            const rings = []
+            for (const poly of c) {
+              if (!Array.isArray(poly)) continue
+              if (Array.isArray(poly[0]) && typeof poly[0][0] === "number") rings.push(poly)
+              else if (Array.isArray(poly[0])) rings.push(poly[0])
+            }
+            return rings
+          }
+          return []
+        }
+
+        let sample = null
+        for (const f of fc.features) {
+          const geom = f && f.geometry
+          if (!geom) {
+            stats.noGeom += 1
+            continue
+          }
+          const t = String(geom.type || "")
+          if (t === "Polygon") stats.poly += 1
+          else if (t === "MultiPolygon") stats.multi += 1
+          else stats.other += 1
+
+          const rings = extractRings(geom)
+          if (!rings.length) {
+            stats.badCoords += 1
+            if (!sample) sample = { type: t, coordinates: geom.coordinates }
+            continue
+          }
+          const color = (f.properties && f.properties.color) ? f.properties.color : "#ff9500"
+          const sid = f && f.properties ? f.properties.id : null
+          for (const ring of rings) {
+            if (!Array.isArray(ring) || ring.length < 3) continue
+            const poly = new AMap.Polygon({
+              path: ring,
+              fillColor: color,
+              fillOpacity: 0.28,
+              strokeColor: color,
+              strokeOpacity: 0.95,
+              strokeWeight: 3,
+              zIndex: 300,
+            })
+            poly.setExtData({ sectorId: sid })
+            poly.on("click", async (ev) => {
+              try {
+                const id = poly.getExtData() ? poly.getExtData().sectorId : null
+                if (!id) return
+                const d = await getSectorDetail(id)
+                const html = buildSectorDetailHtml(d)
+                const info = new AMap.InfoWindow({ content: html, offset: new AMap.Pixel(0, -10) })
+                info.open(state.map, ev.lnglat)
+                setTimeout(() => {
+                  const el = document.querySelector(".sector-detail-scroll")
+                  if (!el) return
+                  const stop = (e) => { try { e.stopPropagation() } catch (_) { } }
+                  el.addEventListener("wheel", stop, { passive: true })
+                  el.addEventListener("mousewheel", stop, { passive: true })
+                  el.addEventListener("DOMMouseScroll", stop, { passive: true })
+                }, 0)
+                setTimeout(() => {
+                  const btn = document.getElementById(`sectorRelBtn_${id}`)
+                  const hint = document.getElementById(`sectorRelHint_${id}`)
+                  const box = document.getElementById(`sectorRelBox_${id}`)
+                  if (!btn || !hint || !box) return
+                  btn.addEventListener("click", async (e) => {
+                    try { e.stopPropagation() } catch (_) { }
+                    if (box.dataset.loaded === "1") {
+                      box.style.display = box.style.display === "none" ? "grid" : "none"
+                      return
+                    }
+                    hint.textContent = "加载中..."
+                    box.style.display = "grid"
+                    box.innerHTML = ""
+                    try {
+                      const tasks = await getSectorRelatedTasks(id)
+                      const arr = Array.isArray(tasks) ? tasks : []
+                      hint.textContent = `共 ${arr.length} 条`
+                      if (!arr.length) {
+                        box.innerHTML = `<div class="hint">该扇区覆盖范围内暂无任务</div>`
+                        box.dataset.loaded = "1"
+                        return
+                      }
+                      const items = []
+                      for (const t of arr) {
+                        items.push(
+                          `<div style="border:1px solid #eef2f7;border-radius:12px;padding:10px;background:#fff;display:grid;gap:6px">
+                            <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start">
+                              <div style="font-weight:700;color:#111827;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(t.site_name || t.site_id || "")}</div>
+                              <div class="pill">${escapeHtml(t.status || "")}</div>
+                            </div>
+                            <div class="hint">类型：${escapeHtml(t.task_type || "-")}｜优先级：${escapeHtml(t.priority || "-")}｜负责人：${escapeHtml(t.assignee ? (t.assignee.name || t.assignee.phone || "") : "-")}</div>
+                            <div class="hint">地址：${escapeHtml(t.address || "-")}</div>
+                          </div>`
+                        )
+                      }
+                      box.innerHTML = items.join("")
+                      box.dataset.loaded = "1"
+                    } catch (err) {
+                      hint.textContent = ""
+                      box.innerHTML = `<div class="err">${escapeHtml(err && err.message ? err.message : String(err))}</div>`
+                    }
+                  })
+                }, 0)
+              } catch (e) {
+                document.getElementById("reloadErr").textContent = e.message
+              }
+            })
+            overlays.push(poly)
+          }
+        }
+        try { state.map.add(overlays) } catch (_) {
+          for (const p of overlays) p.setMap(state.map)
+        }
+        state.sectorOverlays = overlays
+        const dbg = []
+        dbg.push(`feat ${stats.total}`)
+        dbg.push(`poly ${stats.poly}`)
+        dbg.push(`multi ${stats.multi}`)
+        dbg.push(`nogeom ${stats.noGeom}`)
+        dbg.push(`bad ${stats.badCoords}`)
+        dbg.push(`draw ${overlays.length}`)
+        if (sample) {
+          let s = ""
+          try { s = JSON.stringify(sample).slice(0, 160) } catch (_) { s = String(sample) }
+          dbg.push(`sample ${s}`)
+        }
+        document.getElementById("sectorRender").textContent = dbg.join(" | ")
+        if (overlays.length === 0) throw new Error("扇区数据已返回，但未生成任何多边形（请检查坐标/格式）")
+        return geojson
+      }
+
+      function _extendBounds(bounds, lng, lat) {
+        if (typeof lng !== "number" || typeof lat !== "number") return
+        if (!isFinite(lng) || !isFinite(lat)) return
+        bounds.minLng = Math.min(bounds.minLng, lng)
+        bounds.minLat = Math.min(bounds.minLat, lat)
+        bounds.maxLng = Math.max(bounds.maxLng, lng)
+        bounds.maxLat = Math.max(bounds.maxLat, lat)
+      }
+
+      function fitViewIfNeeded(tasks, geojson) {
+        if (state.hasFitView) return
+        const bounds = { minLng: Infinity, minLat: Infinity, maxLng: -Infinity, maxLat: -Infinity }
+
+        if (Array.isArray(tasks)) {
+          for (const t of tasks) _extendBounds(bounds, Number(t.lon), Number(t.lat))
+        }
+
+        if (geojson && Array.isArray(geojson.features)) {
+          for (const f of geojson.features) {
+            const geom = f && f.geometry
+            if (!geom) continue
+            if (geom.type === "Polygon" && Array.isArray(geom.coordinates)) {
+              const rings = geom.coordinates
+              for (const ring of rings) {
+                if (!Array.isArray(ring)) continue
+                for (const pt of ring) {
+                  if (!Array.isArray(pt) || pt.length < 2) continue
+                  _extendBounds(bounds, Number(pt[0]), Number(pt[1]))
+                }
+              }
+            }
+          }
+        }
+
+        if (!isFinite(bounds.minLng) || !isFinite(bounds.minLat) || !isFinite(bounds.maxLng) || !isFinite(bounds.maxLat)) {
+          return
+        }
+
+        try {
+          if (bounds.minLng === bounds.maxLng && bounds.minLat === bounds.maxLat) {
+            state.map.setZoomAndCenter(16, [bounds.minLng, bounds.minLat])
+          } else {
+            const b = new AMap.Bounds([bounds.minLng, bounds.minLat], [bounds.maxLng, bounds.maxLat])
+            state.map.setBounds(b)
+          }
+          state.hasFitView = true
+        } catch (_) {
+        }
+      }
+
+      async function reloadAll() {
+        document.getElementById("reloadErr").textContent = ""
+        try {
+          await loadMe()
+          const tasks = await loadTasks()
+          if (!state.hasFitView && state.fitTarget !== "sectors" && Array.isArray(tasks) && tasks.length > 0) {
+            fitViewIfNeeded(tasks, null)
+            state.fitTarget = "tasks"
+          }
+          if (!state.hasFitView && (state.fitTarget === "sectors" || tasks.length === 0) && document.getElementById("layer_sector").checked) {
+            const ext = await loadSectorsExtent()
+            if (ext && ext.count > 0 && ext.min_lng != null && ext.min_lat != null && ext.max_lng != null && ext.max_lat != null) {
+              try {
+                state.map.setBounds(new AMap.Bounds([ext.min_lng, ext.min_lat], [ext.max_lng, ext.max_lat]))
+                state.hasFitView = true
+                state.fitTarget = "tasks"
+              } catch (_) {
+              }
+              scheduleReloadSectors()
+              return
+            }
+          }
+          const geojson = await loadSectors()
+          fitViewIfNeeded(tasks, geojson)
+        } catch (e) {
+          document.getElementById("reloadErr").textContent = e.message
+        }
+      }
+
+      function scheduleReloadSectors() {
+        if (!document.getElementById("layer_sector").checked) return
+        if (state.sectorReloadTimer) clearTimeout(state.sectorReloadTimer)
+        state.sectorReloadTimer = setTimeout(async () => {
+          try {
+            await loadSectors()
+          } catch (_) {
+          }
+        }, 650)
+      }
+
+      function init() {
+        setToken(state.token)
+        if (!window.AMap) {
+          document.getElementById("reloadErr").textContent = "高德JS API未加载，请配置 amap_web_key"
+          return
+        }
+        markActiveNav()
+        if (IS_MOBILE) {
+          const sub = document.querySelector(".sub")
+          if (sub) sub.textContent = "工程师端地图"
+        }
+        try { window.addEventListener("resize", syncPanelLayout) } catch (_) { }
+        state.map = new AMap.Map("map", {
+          zoom: 12,
+          center: [114.05956, 22.54286],
+        })
+        state.map.addControl(new AMap.Scale())
+        state.map.addControl(new AMap.ToolBar())
+        state.map.on("moveend", scheduleReloadSectors)
+        state.map.on("zoomend", scheduleReloadSectors)
+        state.map.on("click", (e) => {
+          if (!state.pickStartMode) return
+          try {
+            const lng = e && e.lnglat ? e.lnglat.lng : null
+            const lat = e && e.lnglat ? e.lnglat.lat : null
+            if (typeof lng === "number" && typeof lat === "number") {
+              setRouteStartPoint(lng, lat)
+            }
+          } catch (_) {
+          }
+          state.pickStartMode = false
+          const btn = document.getElementById("pickStartBtn")
+          if (btn) btn.textContent = "地图选起点"
+        })
+        loadTaskFilterCache()
+        loadFilterPresets()
+        reloadBandOptions()
+        reloadAll()
+        if (window.innerWidth <= 900 && !state.token) openPanel()
+      }
+    </script>
+    {% if amap_key %}
+    {% if amap_security_js_code %}
+    <script>
+      window._AMapSecurityConfig = { securityJsCode: "{{ amap_security_js_code }}" }
+    </script>
+    {% endif %}
+    <script src="https://webapi.amap.com/maps?v=2.0&key={{ amap_key }}&plugin=AMap.Scale,AMap.ToolBar,AMap.GeoJSON"></script>
+    {% endif %}
+  </head>
+  <body onload="init()">
+    <button id="drawerBtn" class="secondary" onclick="openPanel()">筛选</button>
+    <div id="drawerMask" onclick="closePanel()"></div>
+    <div id="wrap">
+      <div id="panel">
+        <div class="panel-close">
+          <button class="ghost" onclick="closePanel()">关闭筛选</button>
+        </div>
+        <div class="topbar">
+          <div>
+            <div class="brand">网优外场智联作业调度</div>
+            <div class="sub">管理端地图</div>
+          </div>
+          <div class="userbox">
+            <span class="badge">
+              <span id="userDot" class="dot"></span>
+              <span id="userName">未登录</span>
+            </span>
+            <button id="logoutBtn" class="secondary hidden" onclick="logout()">退出</button>
+          </div>
+        </div>
+        <div id="adminNav" class="nav admin-only">
+          <a data-nav="/admin/map" href="/admin/map">地图</a>
+          <a data-nav="/admin/tasks" href="/admin/tasks">任务</a>
+          <a data-nav="/admin/sectors" href="/admin/sectors">工参</a>
+          <a data-nav="/admin/import" href="/admin/import">导入</a>
+          <a data-nav="/admin/report" href="/admin/report">报表</a>
+        </div>
+        <div id="mobileNav" class="nav">
+          <a data-nav="/m/home" href="/m/home">任务</a>
+          <a data-nav="/m/map" href="/m/map">地图</a>
+        </div>
+
+        <div class="row">
+          <div id="reloadErr" class="err"></div>
+          <div class="hint">勾选扇区图层后，只加载当前视野内工参；拖动/缩放会自动刷新。</div>
+        </div>
+
+        <div id="loginCard" class="card">
+          <div class="row">
+            <label>手机号</label>
+            <input id="phone" type="text" placeholder="管理员手机号" />
+          </div>
+          <div class="row">
+            <label>密码</label>
+            <input id="password" type="password" placeholder="密码" />
+          </div>
+          <div class="row">
+            <button onclick="doLogin()">登录</button>
+            <div id="loginErr" class="err"></div>
+          </div>
+          <div class="row">
+            <label>Token（自动保存到浏览器）</label>
+            <input id="token" type="text" readonly />
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="section admin-only">
+          <div class="section-title">快速定位</div>
+          <div class="row">
+            <input id="quick_q" type="text" placeholder="输入站点ID或站点名称" />
+          </div>
+          <div class="actions">
+            <button class="secondary" onclick="quickLocate()">定位</button>
+            <button class="secondary" onclick="searchTasksPopup()">筛选结果</button>
+          </div>
+          <div id="quickHint" class="hint" style="margin-top:8px"></div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">任务筛选</div>
+          <div class="row">
+            <label>任务状态</label>
+            <select id="f_status" onchange="reloadAll()">
+              <option value="">全部</option>
+              <option value="待执行">待执行</option>
+              <option value="执行中">执行中</option>
+              <option value="已完成">已完成</option>
+              <option value="异常">异常</option>
+            </select>
+          </div>
+          <div class="row">
+            <label>任务类型</label>
+            <input id="f_task_type" type="text" placeholder="例如：单验 / 督导 / 干扰测试" onblur="reloadAll()" />
+          </div>
+          <div class="row">
+            <label>优先级</label>
+            <select id="f_priority" onchange="reloadAll()">
+              <option value="">全部</option>
+              <option value="高">高</option>
+              <option value="中">中</option>
+              <option value="低">低</option>
+            </select>
+          </div>
+          <div class="row">
+            <label>负责人</label>
+            <select id="f_assignee" onchange="reloadAll()">
+              <option value="">全部</option>
+            </select>
+          </div>
+          <div class="row">
+            <label>日期范围</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <input id="f_date_from" type="date" onchange="reloadAll()" />
+              <input id="f_date_to" type="date" onchange="reloadAll()" />
+            </div>
+          </div>
+          <div class="row">
+            <label>附近任务（以地图中心）</label>
+            <div class="hint">
+              <input id="f_near" type="checkbox" onchange="reloadAll()" />
+              <span style="margin-left:6px">启用</span>
+            </div>
+            <div class="row" style="margin-top:8px">
+              <label>半径（公里）</label>
+              <select id="f_radius_km" onchange="reloadAll()">
+                <option value="1">1</option>
+                <option value="3">3</option>
+                <option value="5" selected>5</option>
+                <option value="10">10</option>
+              </select>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="secondary" onclick="searchTasksPopup()">查看筛选结果</button>
+          </div>
+          <div class="hint" style="margin-top:8px">任务数量：<span id="taskCount">0</span></div>
+        </div>
+
+        <div class="section admin-only">
+          <div class="section-title">筛选方案</div>
+          <div class="row">
+            <input id="preset_name" type="text" placeholder="例如：深圳-待执行-高优先" />
+          </div>
+          <div class="actions">
+            <button class="secondary" onclick="saveFilterPreset()">保存当前方案</button>
+            <button class="secondary" onclick="resetFilters()">清空筛选</button>
+          </div>
+          <div class="row">
+            <label>已保存方案</label>
+            <select id="preset_list" onchange="applyFilterPreset()"></select>
+          </div>
+          <div class="actions">
+            <button class="secondary" onclick="deleteFilterPreset()">删除方案</button>
+          </div>
+          <div id="presetHint" class="hint" style="margin-top:6px"></div>
+        </div>
+
+        <div class="section admin-only">
+          <div class="section-title">路线规划（最短距离）</div>
+          <div class="hint" style="margin-top:6px">基于当前筛选任务，手动选择起点。</div>
+          <div class="row">
+            <label>起点方式</label>
+            <div class="actions">
+              <button id="pickStartBtn" class="secondary" onclick="enableStartPick()">地图选起点</button>
+              <button class="secondary" onclick="clearRouteStartPoint()">清除起点</button>
+            </div>
+            <div id="startHint" class="hint" style="margin-top:6px"></div>
+          </div>
+          <div class="row">
+            <label>起点任务</label>
+            <select id="route_start"></select>
+            <div class="hint" style="margin-top:6px">若已选地图起点，将优先使用地图起点。</div>
+          </div>
+          <div class="actions">
+            <button onclick="buildRoute()">生成路线</button>
+            <button class="secondary" onclick="clearRoute()">清除路线</button>
+            <button class="secondary" onclick="exportRouteCsv()">导出CSV</button>
+          </div>
+          <div id="routeDispatchRow" class="row hidden">
+            <label>派发负责人</label>
+            <select id="route_assignee"></select>
+            <div class="actions" style="margin-top:8px">
+              <button class="secondary" onclick="dispatchRoute()">按路线派发</button>
+            </div>
+          </div>
+          <div id="routeHint" class="hint" style="margin-top:6px"></div>
+          <div class="hint" style="margin-top:6px">任务数：<span id="routeCount">0</span> ｜总距离：<span id="routeTotal">-</span></div>
+          <div id="routeList" class="route-list"></div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">工参扇区图层</div>
+          <div class="row">
+            <label>显示扇区</label>
+            <div class="hint">
+              <input id="layer_sector" type="checkbox" onchange="reloadAll()" checked />
+              <span style="margin-left:6px">显示工参扇区</span>
+            </div>
+          </div>
+          <div class="hint" style="margin-top:6px">在地图上点击扇区扇形区域，会弹出详情并可查看关联任务。</div>
+          <div class="hint" style="margin-top:8px">
+            <input id="net_4g" type="checkbox" checked onchange="reloadBandOptions(); reloadAll()" /> 4G
+            <input id="net_5g" type="checkbox" checked style="margin-left:10px" onchange="reloadBandOptions(); reloadAll()" /> 5G
+          </div>
+          <div class="row">
+            <label>频段（可多选，可选）</label>
+            <select id="f_band" multiple size="6" onchange="reloadAll()"></select>
+            <div class="hint">按住 Ctrl/Shift 可多选；如果导入文件未包含“频段”列，这里筛选不会生效。</div>
+          </div>
+          <div class="row">
+            <label>扇区半径（米）</label>
+            <select id="sector_radius" onchange="reloadAll()">
+              <option value="50" selected>50</option>
+              <option value="100">100</option>
+              <option value="150">150</option>
+              <option value="200">200</option>
+              <option value="300">300</option>
+              <option value="500">500</option>
+            </select>
+          </div>
+          <div class="hint">扇区数量：<span id="sectorCount">-</span></div>
+          <div class="hint">扇区渲染：<span id="sectorRender">-</span></div>
+        </div>
+
+        <div class="row">
+          <button class="secondary" onclick="reloadAll()">刷新</button>
+          <button class="secondary" style="margin-left:8px" onclick="state.fitTarget='sectors'; state.hasFitView=false; reloadAll();">定位工参</button>
+        </div>
+
+        <div class="row">
+          <div class="hint">
+            {% if not amap_key %}
+            amap_web_key 未配置：请在后端 .env 设置 AMAP_WEB_KEY 后刷新本页。
+            {% else %}
+            高德JS Key 已配置。
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      <div id="map"></div>
+    </div>
+    <div class="route-fab">
+      <button class="secondary" onclick="openMyRoutePanel()">我的路线</button>
+    </div>
+    <div class="bottom-nav">
+      <a data-nav="/m/home" href="/m/home">任务</a>
+      <a data-nav="/m/map" href="/m/map">地图</a>
+    </div>
+    <div id="myRouteMask" class="modalMask bottom" onclick="if(event.target.id==='myRouteMask'){closeMyRoutePanel()}">
+      <div class="sheet">
+        <div class="modalHead">
+          <div class="modalTitle">我的路线</div>
+          <button class="secondary" onclick="closeMyRoutePanel()">关闭</button>
+        </div>
+        <div class="divider"></div>
+        <div id="myRouteList" class="route-list"></div>
+        <div class="divider"></div>
+        <div id="myRouteDetail" class="route-list"></div>
+      </div>
+    </div>
+    <div id="taskActionMask" class="modalMask bottom" onclick="if(event.target.id==='taskActionMask'){closeTaskAction()}">
+      <div class="sheet">
+        <div class="modalHead">
+          <div class="modalTitle">任务操作</div>
+          <button class="secondary" onclick="closeTaskAction()">关闭</button>
+        </div>
+        <div class="divider"></div>
+        <div id="taskActionBox"></div>
+        <div class="row">
+          <label>异常类型（仅标记异常时）</label>
+          <select id="taskAbType">
+            <option value="">请选择</option>
+            <option value="设备故障">设备故障</option>
+            <option value="信号弱">信号弱</option>
+            <option value="站点无法进入">站点无法进入</option>
+            <option value="其他">其他</option>
+          </select>
+        </div>
+        <div class="row">
+          <label>备注</label>
+          <input id="taskRemark" type="text" placeholder="可选填写备注或说明" />
+        </div>
+        <div class="actions">
+          <button onclick="applyTaskStatus('执行中')">开始执行</button>
+          <button class="secondary" onclick="applyTaskStatus('已完成')">已完成</button>
+          <button class="secondary" onclick="applyTaskStatus('异常')">标记异常</button>
+        </div>
+        <div id="taskActionErr" class="err" style="margin-top:8px"></div>
+      </div>
+    </div>
+    <div id="taskPickMask" class="modalMask" onclick="if(event.target.id==='taskPickMask'){closeTaskPicker()}">
+      <div class="modal">
+        <div class="modalHead">
+          <div class="modalTitle">筛选结果（<span id="taskPickCount">0</span>）</div>
+          <button class="secondary" onclick="closeTaskPicker()">关闭</button>
+        </div>
+        <div class="divider"></div>
+        <div id="taskPickList" style="display:grid;gap:10px;max-height:60vh;overflow:auto;padding-right:8px"></div>
+        <div class="hint" style="margin-top:10px">点击任意任务可在地图上定位并打开详情。</div>
+      </div>
+    </div>
+  </body>
+</html>
+
