@@ -8,6 +8,7 @@ backend/.pytest_cache/
 backend/.env
 backend/.venv/
 backend/__pycache__/
+data/app.db
 android/.gradle/
 android/.idea/
 android/app/build/
