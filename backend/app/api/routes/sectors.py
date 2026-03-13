@@ -17,6 +17,7 @@ from app.models.task import Task
 from app.models.user import User
 from app.schemas.sector import SectorListItem, SectorOut
 from app.schemas.task import TaskOut
+from app.utils.csv_utils import decode_csv_bytes
 from app.utils.geo import haversine_distance_m, point_in_polygon, sector_polygon
 
 
@@ -26,6 +27,11 @@ router = APIRouter()
 class ImportErrorItem(BaseModel):
     row: int
     error: str
+
+
+class ImportPreview(BaseModel):
+    headers: list[str]
+    sample_rows: list[dict[str, str]]
 
 
 class SectorPurgeRequest(BaseModel):
@@ -63,6 +69,27 @@ def _color_for(network: str, band: str) -> str:
     if network == "4G":
         return {"1": "#ff3b30", "3": "#007aff", "5": "#34c759", "8": "#8e8e93"}.get(band, "#007aff")
     return {"1": "#ff9500", "5": "#af52de", "78": "#00c7be", "79": "#636366"}.get(band, "#ff9500")
+
+
+def _preview_csv(file_bytes: bytes, sample_size: int = 5, encoding: str | None = None) -> ImportPreview:
+    text, _ = decode_csv_bytes(file_bytes, encoding)
+    f = io.StringIO(text)
+    reader = csv.reader(f)
+    rows = list(reader)
+    if not rows:
+        return ImportPreview(headers=[], sample_rows=[])
+    headers_raw = [str(h or "").strip() for h in rows[0]]
+    sample_rows_out: list[dict[str, str]] = []
+    for r in rows[1:]:
+        if len(sample_rows_out) >= sample_size:
+            break
+        if not any(str(cell or "").strip() for cell in r):
+            continue
+        item: dict[str, str] = {}
+        for idx, h in enumerate(headers_raw):
+            item[h] = str(r[idx]).strip() if idx < len(r) and r[idx] is not None else ""
+        sample_rows_out.append(item)
+    return ImportPreview(headers=headers_raw, sample_rows=sample_rows_out)
 
 
 @router.get("", response_model=list[SectorOut])
@@ -180,14 +207,12 @@ def list_sector_bands(
 def import_sectors(
     file: UploadFile = File(...),
     mapping_json: str | None = Form(default=None),
+    encoding: str | None = Form(default=None),
     db: Session = Depends(get_db),
     _: object = Depends(require_admin),
 ) -> dict:
     content = file.file.read()
-    try:
-        text = content.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        text = content.decode("gb18030")
+    text, _ = decode_csv_bytes(content, encoding)
     f = io.StringIO(text)
     reader = csv.DictReader(f)
     if reader.fieldnames is None:
@@ -275,6 +300,16 @@ def import_sectors(
 
     db.commit()
     return {"network": network, "inserted": inserted, "errors": [e.model_dump() for e in errors]}
+
+
+@router.post("/import/preview", response_model=ImportPreview)
+def preview_sector_import(
+    file: UploadFile = File(...),
+    encoding: str | None = Form(default=None),
+    _: object = Depends(require_admin),
+) -> ImportPreview:
+    content = file.file.read()
+    return _preview_csv(content, encoding=encoding)
 
 
 @router.post("/purge")
@@ -412,7 +447,7 @@ def related_tasks(
     max_lat = max(p[1] for p in poly)
 
     stmt = select(Task).where(Task.lon >= min_lng, Task.lon <= max_lng, Task.lat >= min_lat, Task.lat <= max_lat)
-    if current_user.role != "admin":
+    if current_user.role not in ("admin", "super_admin"):
         stmt = stmt.where(Task.assignee_id == current_user.id)
     stmt = stmt.order_by(Task.id.desc())
     if limit < 1:

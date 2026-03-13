@@ -57,6 +57,8 @@
         active: "tasks",
         tasksHeaders: [],
         sectorsHeaders: [],
+        tasksEncoding: localStorage.getItem("csv_encoding_tasks") || "auto",
+        sectorsEncoding: localStorage.getItem("csv_encoding_sectors") || "auto",
         user: null,
       }
 
@@ -96,16 +98,14 @@
       }
 
       async function loadMe() {
-        if (!state.token) {
-          setUser(null)
-          return
-        }
+        if (!state.token) { location.href = "/login"; return }
         try {
           const u = await api("/api/auth/me")
+          if (u.role === "engineer") { location.href = "/m/home"; return }
           setUser(u)
         } catch (_) {
           setToken("")
-          setUser(null)
+          location.href = "/login"
         }
       }
 
@@ -136,6 +136,29 @@
         const firstLine = text.split(/\r?\n/)[0] || ""
         const cols = firstLine.split(",").map(s => s.trim()).filter(Boolean)
         return cols
+      }
+
+      function setCsvEncoding(kind, value) {
+        const v = value || "auto"
+        if (kind === "tasks") {
+          state.tasksEncoding = v
+          localStorage.setItem("csv_encoding_tasks", v)
+        } else {
+          state.sectorsEncoding = v
+          localStorage.setItem("csv_encoding_sectors", v)
+        }
+      }
+
+      function getCsvEncoding(kind) {
+        return kind === "tasks" ? (state.tasksEncoding || "auto") : (state.sectorsEncoding || "auto")
+      }
+
+      async function previewCsv(endpoint, file, encoding) {
+        if (!state.token) throw new Error("请先登录后再解析 CSV 表头")
+        const form = new FormData()
+        form.append("file", file, file.name)
+        if (encoding) form.append("encoding", encoding)
+        return await api(endpoint, { method: "POST", body: form })
       }
 
       function normHeader(s) {
@@ -229,8 +252,13 @@
           const prev = await api("/api/tasks/import/preview", { method: "POST", body: form })
           state.tasksHeaders = prev.headers || []
         } else {
-          const text = await f.text()
-          state.tasksHeaders = parseCSVHeader(text)
+          if (!state.token) {
+            document.getElementById("tasksErr").textContent = "CSV 表头解析需要先登录"
+            return
+          }
+          const enc = getCsvEncoding("tasks")
+          const prev = await previewCsv("/api/tasks/import/preview", f, enc)
+          state.tasksHeaders = prev.headers || []
         }
         renderMapping(
           "tasksMapping",
@@ -257,8 +285,13 @@
         document.getElementById("sectorsErr").textContent = ""
         const f = document.getElementById("sectorsFile").files[0]
         if (!f) return
-        const text = await f.text()
-        state.sectorsHeaders = parseCSVHeader(text)
+        if (!state.token) {
+          document.getElementById("sectorsErr").textContent = "CSV 表头解析需要先登录"
+          return
+        }
+        const enc = getCsvEncoding("sectors")
+        const prev = await previewCsv("/api/sectors/import/preview", f, enc)
+        state.sectorsHeaders = prev.headers || []
         renderMapping(
           "sectorsMapping",
           state.sectorsHeaders,
@@ -275,6 +308,22 @@
         document.getElementById("sectorsHeaders").textContent = state.sectorsHeaders.join(", ")
       }
 
+      function onTasksEncodingChange() {
+        const sel = document.getElementById("tasksEncoding")
+        if (!sel) return
+        setCsvEncoding("tasks", sel.value)
+        const f = document.getElementById("tasksFile").files[0]
+        if (f) onPickTasksFile()
+      }
+
+      function onSectorsEncodingChange() {
+        const sel = document.getElementById("sectorsEncoding")
+        if (!sel) return
+        setCsvEncoding("sectors", sel.value)
+        const f = document.getElementById("sectorsFile").files[0]
+        if (f) onPickSectorsFile()
+      }
+
       async function importTasks() {
         document.getElementById("tasksErr").textContent = ""
         try {
@@ -288,6 +337,7 @@
           const form = new FormData()
           form.append("file", f, f.name)
           form.append("mapping_json", JSON.stringify(mapping))
+          form.append("encoding", getCsvEncoding("tasks"))
           const data = await api("/api/tasks/import", { method: "POST", body: form })
           document.getElementById("tasksResult").textContent = JSON.stringify(data, null, 2)
         } catch (e) {
@@ -308,6 +358,7 @@
           const form = new FormData()
           form.append("file", f, f.name)
           form.append("mapping_json", JSON.stringify(mapping))
+          form.append("encoding", getCsvEncoding("sectors"))
           const data = await api("/api/sectors/import", { method: "POST", body: form })
           document.getElementById("sectorsResult").textContent = JSON.stringify(data, null, 2)
         } catch (e) {
@@ -370,6 +421,10 @@
         setToken(state.token)
         markActiveNav()
         showTab("tasks")
+        const te = document.getElementById("tasksEncoding")
+        if (te) te.value = state.tasksEncoding || "auto"
+        const se = document.getElementById("sectorsEncoding")
+        if (se) se.value = state.sectorsEncoding || "auto"
         loadMe()
       }
     </script>
@@ -396,6 +451,7 @@
         <a data-nav="/admin/sectors" href="/admin/sectors">工参</a>
         <a data-nav="/admin/import" href="/admin/import">导入</a>
         <a data-nav="/admin/report" href="/admin/report">报表</a>
+        <a data-nav="/admin/users" href="/admin/users">账号</a>
       </div>
 
       <div class="card">
@@ -446,8 +502,22 @@
           <label>选择任务 CSV</label>
           <input id="tasksFile" type="file" accept=".csv,.xlsx" onchange="onPickTasksFile()" />
           <div class="hint">选择文件后会读取首行表头生成映射（xlsx 表头由后端解析）。</div>
-          <div class="err" id="tasksErr"></div>
-        </div>
+        <div class="err" id="tasksErr"></div>
+      </div>
+      <div class="row">
+        <label>CSV 编码</label>
+        <select id="tasksEncoding" onchange="onTasksEncodingChange()">
+          <option value="auto">自动识别</option>
+          <option value="utf-8">UTF-8</option>
+          <option value="utf-8-sig">UTF-8 BOM</option>
+          <option value="gb18030">GB18030</option>
+          <option value="gbk">GBK</option>
+          <option value="gb2312">GB2312</option>
+          <option value="utf-16le">UTF-16LE</option>
+          <option value="utf-16be">UTF-16BE</option>
+        </select>
+        <div class="hint">自动识别仍乱码时可手动选择编码并重新解析。</div>
+      </div>
 
         <div class="row">
           <label>检测到的表头</label>
@@ -474,8 +544,22 @@
           <label>选择工参 CSV（4G/5G 都支持）</label>
           <input id="sectorsFile" type="file" accept=".csv" onchange="onPickSectorsFile()" />
           <div class="hint">选择文件后会读取首行表头生成映射。</div>
-          <div class="err" id="sectorsErr"></div>
-        </div>
+        <div class="err" id="sectorsErr"></div>
+      </div>
+      <div class="row">
+        <label>CSV 编码</label>
+        <select id="sectorsEncoding" onchange="onSectorsEncodingChange()">
+          <option value="auto">自动识别</option>
+          <option value="utf-8">UTF-8</option>
+          <option value="utf-8-sig">UTF-8 BOM</option>
+          <option value="gb18030">GB18030</option>
+          <option value="gbk">GBK</option>
+          <option value="gb2312">GB2312</option>
+          <option value="utf-16le">UTF-16LE</option>
+          <option value="utf-16be">UTF-16BE</option>
+        </select>
+        <div class="hint">自动识别仍乱码时可手动选择编码并重新解析。</div>
+      </div>
 
         <div class="row">
           <label>检测到的表头</label>

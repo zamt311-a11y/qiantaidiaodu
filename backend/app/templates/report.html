@@ -112,8 +112,15 @@
       }
 
       async function loadMe() {
-        if (!state.token) { setUser(null); return }
-        try { setUser(await api("/api/auth/me")) } catch { setToken(""); setUser(null) }
+        if (!state.token) { location.href = "/login"; return }
+        try {
+          const me = await api("/api/auth/me")
+          if (me.role === "engineer") { location.href = "/m/home"; return }
+          setUser(me)
+        } catch {
+          setToken("")
+          location.href = "/login"
+        }
       }
 
       async function doLogin() {
@@ -364,6 +371,7 @@
         <a data-nav="/admin/sectors" href="/admin/sectors">工参</a>
         <a data-nav="/admin/import" href="/admin/import">导入</a>
         <a data-nav="/admin/report" href="/admin/report">报表</a>
+        <a data-nav="/admin/users" href="/admin/users">账号</a>
       </div>
 
       <div id="loginCard" class="card hidden">

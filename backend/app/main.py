@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.admin.routes import router as admin_router
 from app.api.router import api_router
 from app.mobile.routes import router as mobile_router
+from app.web.routes import router as web_router
 from app.core.config import settings
 from app.db.init_db import bootstrap_admin, init_db
 from app.db.session import SessionLocal
@@ -90,6 +91,7 @@ def create_app() -> FastAPI:
     app.include_router(api_router, prefix="/api")
     app.include_router(admin_router, prefix="/admin")
     app.include_router(mobile_router, prefix="/m")
+    app.include_router(web_router)
 
     @app.get("/health")
     def health() -> dict:

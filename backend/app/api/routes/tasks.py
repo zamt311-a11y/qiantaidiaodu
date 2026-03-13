@@ -19,6 +19,7 @@ from app.models.task import Task
 from app.models.task_photo import TaskPhoto
 from app.models.user import User
 from app.schemas.task import TaskAdminUpdate, TaskCreate, TaskOut, TaskUpdate
+from app.utils.csv_utils import decode_csv_bytes
 from app.utils.geo import haversine_distance_m
 
 
@@ -78,11 +79,8 @@ def _parse_dt(value: str | None) -> datetime | None:
     return None
 
 
-def _read_csv(file_bytes: bytes) -> tuple[list[str], list[dict[str, str]]]:
-    try:
-        text = file_bytes.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        text = file_bytes.decode("gb18030")
+def _read_csv(file_bytes: bytes, encoding: str | None = None) -> tuple[list[str], list[dict[str, str]]]:
+    text, _ = decode_csv_bytes(file_bytes, encoding)
     f = io.StringIO(text)
     reader = csv.reader(f)
     rows = list(reader)
@@ -121,11 +119,8 @@ def _read_excel(file_bytes: bytes) -> tuple[list[str], list[dict[str, str]]]:
     return (headers, data)
 
 
-def _preview_csv(file_bytes: bytes, sample_size: int = 5) -> ImportPreview:
-    try:
-        text = file_bytes.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        text = file_bytes.decode("gb18030")
+def _preview_csv(file_bytes: bytes, sample_size: int = 5, encoding: str | None = None) -> ImportPreview:
+    text, _ = decode_csv_bytes(file_bytes, encoding)
     f = io.StringIO(text)
     reader = csv.reader(f)
     rows = list(reader)
@@ -187,7 +182,7 @@ def list_tasks(
     limit: int | None = None,
 ) -> list[TaskOut]:
     stmt = select(Task)
-    if current_user.role != "admin":
+    if current_user.role not in ("admin", "super_admin"):
         stmt = stmt.where(Task.assignee_id == current_user.id)
     if status_:
         stmt = stmt.where(Task.status == status_)
@@ -270,7 +265,7 @@ def get_task(
     task = db.get(Task, task_id)
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
-    if current_user.role != "admin" and task.assignee_id != current_user.id:
+    if current_user.role not in ("admin", "super_admin") and task.assignee_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权限")
     return TaskOut.model_validate(task)
 
@@ -285,7 +280,7 @@ def update_task(
     task = db.get(Task, task_id)
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
-    if current_user.role != "admin" and task.assignee_id != current_user.id:
+    if current_user.role not in ("admin", "super_admin") and task.assignee_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权限")
     if payload.status is not None:
         task.status = payload.status
@@ -391,6 +386,7 @@ def dispatch_tasks(
 def import_tasks(
     file: UploadFile = File(...),
     mapping_json: str | None = Form(default=None),
+    encoding: str | None = Form(default=None),
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
 ) -> dict:
@@ -399,7 +395,7 @@ def import_tasks(
     if filename.lower().endswith(".xlsx"):
         headers, rows = _read_excel(content)
     else:
-        headers, rows = _read_csv(content)
+        headers, rows = _read_csv(content, encoding)
 
     default_site_id = ["站点id", "siteid", "site_id", "站点编号"]
     default_site_name = ["站点名称", "sitename", "name"]
@@ -468,13 +464,14 @@ def import_tasks(
 @router.post("/import/preview", response_model=ImportPreview)
 def preview_task_import(
     file: UploadFile = File(...),
+    encoding: str | None = Form(default=None),
     _: User = Depends(require_admin),
 ) -> ImportPreview:
     content = file.file.read()
     filename = file.filename or ""
     if filename.lower().endswith(".xlsx"):
         return _preview_excel(content)
-    return _preview_csv(content)
+    return _preview_csv(content, encoding=encoding)
 
 
 @router.post("/{task_id}/photos")
@@ -487,7 +484,7 @@ def upload_task_photos(
     task = db.get(Task, task_id)
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
-    if current_user.role != "admin" and task.assignee_id != current_user.id:
+    if current_user.role not in ("admin", "super_admin") and task.assignee_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权限")
     if len(files) > 3:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="最多上传3张照片")

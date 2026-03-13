@@ -100,8 +100,15 @@
       }
 
       async function loadMe() {
-        if (!state.token) { setUser(null); return }
-        try { setUser(await api("/api/auth/me")) } catch { setToken(""); setUser(null) }
+        if (!state.token) { location.href = "/login"; return }
+        try {
+          const me = await api("/api/auth/me")
+          if (me.role !== "engineer") { location.href = "/admin/tasks"; return }
+          setUser(me)
+        } catch {
+          setToken("")
+          location.href = "/login"
+        }
       }
 
       async function doLogin() {

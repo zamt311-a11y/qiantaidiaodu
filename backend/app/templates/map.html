@@ -60,17 +60,22 @@
       .modalTitle { font-weight: 800; color: var(--ink); }
       .modalMask.bottom { align-items: flex-end; padding: 0; z-index: 1400; }
       .sheet { width: min(860px, 100%); background: #fff; border-radius: 18px 18px 0 0; border: 1px solid var(--line); padding: 14px 14px 78px; box-shadow: var(--shadow); max-height: 75vh; overflow: auto; }
+      .sheet.task-action { padding-bottom: 124px; }
       #drawerMask { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.25); display: none; z-index: 1299; }
       #drawerBtn { position: fixed; left: 12px; top: 12px; z-index: 1298; box-shadow: var(--shadow); }
       .route-list { display: grid; gap: 8px; max-height: 260px; overflow: auto; margin-top: 8px; }
       .route-item { padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: #fff; cursor: pointer; }
       .route-badge { width: 22px; height: 22px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 12px; font-weight: 800; display: inline-flex; align-items: center; justify-content: center; border: 2px solid #fff; box-shadow: var(--shadow-soft); }
+      .task-hit { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; }
       .task-marker { position: relative; width: 18px; height: 18px; border-radius: 999px; border: 2px solid #fff; box-shadow: 0 6px 14px rgba(15, 23, 42, 0.25); }
       .task-marker::after { content: ""; position: absolute; inset: -8px; border-radius: 999px; border: 2px solid currentColor; opacity: 0.6; animation: pulse 1.6s ease-out infinite; }
       .task-marker.wait { background: #0ea5e9; color: #0ea5e9; }
       .task-marker.doing { background: #f59e0b; color: #f59e0b; }
       .task-marker.done { background: #22c55e; color: #22c55e; }
       .task-marker.bad { background: #ef4444; color: #ef4444; }
+      .gps-dot { width: 14px; height: 14px; border-radius: 999px; background: #ef4444; box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.25); border: 2px solid #fff; }
+      .status-btn.active { border-color: var(--accent); background: var(--accent); color: #fff; }
+      .action-bar { position: sticky; bottom: 0; background: #fff; padding: 10px 0 0; display: flex; gap: 8px; border-top: 1px solid var(--line); }
       @keyframes pulse {
         0% { transform: scale(0.6); opacity: 0.7; }
         70% { transform: scale(1.25); opacity: 0; }
@@ -118,11 +123,20 @@
         routeStartMarker: null,
         pickStartMode: false,
         activeTask: null,
+        pendingTaskStatus: "",
         fitTarget: "tasks",
         hasFitView: false,
         user: null,
+        gpsMarker: null,
+        gpsWatchId: null,
+        gpsCentered: false,
         sectorReloadTimer: null,
         route: null,
+        routeSource: null,
+        routeTasks: [],
+        routeSegments: [],
+        routeStartPoint: null,
+        routeVisibility: { plan: true, my: true },
         routeLine: null,
         routeMarkers: [],
         myPlans: [],
@@ -379,8 +393,115 @@
         state.routeMarkers = []
       }
 
+      function syncRouteToggleUi() {
+        const plan = document.getElementById("routeTogglePlan")
+        if (plan) plan.checked = !!state.routeVisibility.plan
+        const mine = document.getElementById("routeToggleMy")
+        if (mine) mine.checked = !!state.routeVisibility.my
+      }
+
+      function applyRouteVisibility() {
+        if (!state.routeTasks.length) {
+          clearRouteOverlays()
+          return
+        }
+        const visible = state.routeSource === "my" ? state.routeVisibility.my : state.routeVisibility.plan
+        if (!visible) {
+          clearRouteOverlays()
+          return
+        }
+        drawRouteOverlays(state.routeTasks, state.routeSegments, state.routeStartPoint)
+      }
+
+      function drawRouteOverlays(order, segments, startPoint) {
+        clearRouteOverlays()
+        if (!order.length) return
+        const path = []
+        if (startPoint) path.push([startPoint.lon, startPoint.lat])
+        for (const t of order) path.push([t.lon, t.lat])
+        try {
+          state.routeLine = new AMap.Polyline({
+            path,
+            strokeColor: "#0ea5e9",
+            strokeOpacity: 0.9,
+            strokeWeight: 4,
+            zIndex: 450,
+          })
+          state.routeLine.setMap(state.map)
+        } catch (_) {
+        }
+        state.routeMarkers = []
+        for (let i = 0; i < order.length; i++) {
+          const t = order[i]
+          try {
+            const mk = new AMap.Marker({
+              position: [t.lon, t.lat],
+              content: `<div class="route-badge">${i + 1}</div>`,
+              offset: new AMap.Pixel(-11, -11),
+              zIndex: 500,
+            })
+            mk.setMap(state.map)
+            state.routeMarkers.push(mk)
+          } catch (_) {
+          }
+        }
+      }
+
+      function startGpsWatch() {
+        if (!IS_MOBILE || !navigator.geolocation || !state.map) return
+        if (state.gpsWatchId != null) return
+        try {
+          state.gpsWatchId = navigator.geolocation.watchPosition(handleGpsPosition, handleGpsError, {
+            enableHighAccuracy: true,
+            maximumAge: 5000,
+            timeout: 10000,
+          })
+        } catch (_) {
+        }
+      }
+
+      function handleGpsPosition(pos) {
+        if (!pos || !pos.coords || !state.map) return
+        const lon = pos.coords.longitude
+        const lat = pos.coords.latitude
+        if (typeof lon !== "number" || typeof lat !== "number") return
+        if (!state.gpsMarker) {
+          try {
+            state.gpsMarker = new AMap.Marker({
+              position: [lon, lat],
+              content: `<div class="gps-dot"></div>`,
+              offset: new AMap.Pixel(-7, -7),
+              zIndex: 600,
+            })
+            state.gpsMarker.setMap(state.map)
+          } catch (_) {
+            return
+          }
+        } else {
+          try { state.gpsMarker.setPosition([lon, lat]) } catch (_) { }
+        }
+        if (!state.gpsCentered) {
+          try { state.map.setCenter([lon, lat]) } catch (_) { }
+          state.gpsCentered = true
+        }
+      }
+
+      function handleGpsError() {
+      }
+
+      function toggleRouteVisibility(kind, checked) {
+        if (kind === "plan") state.routeVisibility.plan = !!checked
+        if (kind === "my") state.routeVisibility.my = !!checked
+        syncRouteToggleUi()
+        applyRouteVisibility()
+      }
+
       function clearRoute() {
         state.route = null
+        state.routeSource = null
+        state.routeTasks = []
+        state.routeSegments = []
+        state.routeStartPoint = null
         clearRouteOverlays()
         document.getElementById("routeCount").textContent = "0"
         document.getElementById("routeTotal").textContent = "-"
@@ -451,6 +572,7 @@
           startPoint: startPoint ? { lon: startPoint.lon, lat: startPoint.lat } : null,
           startId: startPoint ? null : startId,
         }
+        state.routeSource = "plan"
         renderRoute(order, segments, startPoint)
         try {
           localStorage.setItem(
@@ -462,41 +584,17 @@
       }
 
       function renderRoute(order, segments, startPoint) {
-        clearRouteOverlays()
-        if (!order.length) return
+        state.routeTasks = Array.isArray(order) ? order.slice() : []
+        state.routeSegments = Array.isArray(segments) ? segments.slice() : []
+        state.routeStartPoint = startPoint || null
+        if (!state.routeTasks.length) {
+          clearRouteOverlays()
+          return
+        }
         document.getElementById("routeCount").textContent = String(order.length)
         document.getElementById("routeTotal").textContent = `${segments[segments.length - 1].total.toFixed(2)} km`
-
-        const path = []
-        if (startPoint) path.push([startPoint.lon, startPoint.lat])
-        for (const t of order) path.push([t.lon, t.lat])
-        try {
-          state.routeLine = new AMap.Polyline({
-            path,
-            strokeColor: "#0ea5e9",
-            strokeOpacity: 0.9,
-            strokeWeight: 4,
-            zIndex: 450,
-          })
-          state.routeLine.setMap(state.map)
-        } catch (_) {
-        }
-
-        state.routeMarkers = []
-        for (let i = 0; i < order.length; i++) {
-          const t = order[i]
-          try {
-            const mk = new AMap.Marker({
-              position: [t.lon, t.lat],
-              content: `<div class="route-badge">${i + 1}</div>`,
-              offset: new AMap.Pixel(-11, -11),
-              zIndex: 500,
-            })
-            mk.setMap(state.map)
-            state.routeMarkers.push(mk)
-          } catch (_) {
-          }
-        }
+        syncRouteToggleUi()
+        applyRouteVisibility()
         renderRouteList(order, segments, startPoint)
       }
 
@@ -640,6 +738,7 @@
           startPoint: obj.start_point || null,
           startId: obj.start_id || null,
         }
+        state.routeSource = "plan"
         if (obj.start_point && typeof obj.start_point.lon === "number" && typeof obj.start_point.lat === "number") {
           setRouteStartPoint(obj.start_point.lon, obj.start_point.lat)
         }
@@ -710,6 +809,7 @@
             total += d
             segments.push({ dist: d, total })
           }
+          state.routeSource = "my"
           renderRoute(tasks, segments, startPoint)
           state.route = { orderIds: tasks.map(t => Number(t.id)), totalKm: total, segments, startPoint }
           const box = document.getElementById("myRouteDetail")
@@ -879,9 +979,9 @@
           <div style="height:1px;background:#eef2f7;margin:10px 0"></div>
         `
         const body = rows.length
-          ? `<div class="sector-detail-scroll" style="max-height:${isMobile ? "220px" : "300px"};overflow:auto;padding-right:8px;display:grid;gap:8px" onwheel="event.stopPropagation()">${rows.join("")}</div>`
+          ? `<div class="sector-detail-scroll" style="max-height:${isMobile ? "180px" : "300px"};overflow:auto;padding-right:8px;display:grid;gap:8px" onwheel="event.stopPropagation()">${rows.join("")}</div>`
           : `<div class="hint">raw_fields_json 为空</div>`
-        return `<div style="min-width:${isMobile ? "260px" : "360px"};max-width:${isMobile ? "82vw" : "520px"}">${head}${action}${body}</div>`
+        return `<div style="min-width:${isMobile ? "220px" : "360px"};max-width:${isMobile ? "70vw" : "520px"}">${head}${action}${body}</div>`
       }
 
       function selectedBandValues() {
@@ -926,13 +1026,13 @@
         document.getElementById("userDot").classList.toggle("ok", !!state.user)
         document.getElementById("loginCard").classList.toggle("hidden", !!state.user)
         document.getElementById("logoutBtn").classList.toggle("hidden", !state.user)
-        const isAdmin = !!(state.user && state.user.role === "admin")
+        const isAdmin = !!(state.user && (state.user.role === "admin" || state.user.role === "super_admin"))
         const dispatchRow = document.getElementById("routeDispatchRow")
         if (dispatchRow) dispatchRow.classList.toggle("hidden", !isAdmin)
       }
 
       async function loadAssignees() {
-        if (!state.user || state.user.role !== "admin") return
+        if (!state.user || (state.user.role !== "admin" && state.user.role !== "super_admin")) return
         try {
           const users = await api("/api/users")
           state.assignees = Array.isArray(users) ? users : []
@@ -964,17 +1064,16 @@
       }
 
       async function loadMe() {
-        if (!state.token) {
-          setUser(null)
-          return
-        }
+        if (!state.token) { location.href = "/login"; return }
         try {
           const u = await api("/api/auth/me")
+          if (IS_MOBILE && u.role !== "engineer") { location.href = "/admin/tasks"; return }
+          if (!IS_MOBILE && u.role === "engineer") { location.href = "/m/home"; return }
           setUser(u)
           await loadAssignees()
         } catch (_) {
           setToken("")
-          setUser(null)
+          location.href = "/login"
         }
       }
 
@@ -1025,6 +1124,7 @@
       function openTaskAction(t) {
         if (!t) return
         state.activeTask = t
+        state.pendingTaskStatus = ""
         const box = document.getElementById("taskActionBox")
         if (!box) return
         box.innerHTML = `
@@ -1042,6 +1142,7 @@
         if (ab) ab.value = ""
         const rm = document.getElementById("taskRemark")
         if (rm) rm.value = ""
+        syncTaskStatusButtons()
         const mask = document.getElementById("taskActionMask")
         if (mask) mask.style.display = "flex"
       }
@@ -1050,6 +1151,34 @@
         const mask = document.getElementById("taskActionMask")
         if (mask) mask.style.display = "none"
         state.activeTask = null
+        state.pendingTaskStatus = ""
+      }
+
+      function syncTaskStatusButtons() {
+        document.querySelectorAll("[data-task-status]").forEach(btn => {
+          const active = btn.dataset.taskStatus === state.pendingTaskStatus
+          btn.classList.toggle("active", active)
+        })
+      }
+
+      function selectTaskStatus(status) {
+        state.pendingTaskStatus = status || ""
+        syncTaskStatusButtons()
+        const err = document.getElementById("taskActionErr")
+        if (err) err.textContent = ""
+      }
+
+      function submitTaskStatus() {
+        if (!state.pendingTaskStatus) {
+          const err = document.getElementById("taskActionErr")
+          if (err) err.textContent = "请先选择一个状态"
+          return
+        }
+        applyTaskStatus(state.pendingTaskStatus)
+      }
+
+      function cancelTaskStatus() {
+        closeTaskAction()
       }
 
       async function applyTaskStatus(status) {
@@ -1111,9 +1240,9 @@
           if (IS_MOBILE) {
             marker = new AMap.Marker({
               position: [t.lon, t.lat],
-              content: `<div class="task-marker ${taskClass(t.status)}"></div>`,
-              offset: new AMap.Pixel(-9, -9),
-              zIndex: 30,
+              content: `<div class="task-hit"><div class="task-marker ${taskClass(t.status)}"></div></div>`,
+              offset: new AMap.Pixel(-18, -18),
+              zIndex: 50,
             })
             marker.on("click", () => {
               openTaskAction(t)
@@ -1162,6 +1291,7 @@
             segments.push({ dist: d, total })
           }
           state.route = { orderIds: order.map(t => Number(t.id)), totalKm: total, segments, startPoint }
+          if (!state.routeSource) state.routeSource = "plan"
           renderRoute(order, segments, startPoint)
         } else {
           restoreRouteFromCache()
@@ -1206,6 +1336,7 @@
       }
 
       function focusTask(taskId) {
+        closeTaskPicker()
         const t = state.taskById.get(Number(taskId))
         const m = state.taskMarkers.get(Number(taskId))
         if (!t || !m) return
@@ -1575,6 +1706,8 @@
         state.map.addControl(new AMap.ToolBar())
         state.map.on("moveend", scheduleReloadSectors)
         state.map.on("zoomend", scheduleReloadSectors)
+        syncRouteToggleUi()
+        startGpsWatch()
         state.map.on("click", (e) => {
           if (!state.pickStartMode) return
           try {
@@ -1632,6 +1765,7 @@
           <a data-nav="/admin/sectors" href="/admin/sectors">工参</a>
           <a data-nav="/admin/import" href="/admin/import">导入</a>
           <a data-nav="/admin/report" href="/admin/report">报表</a>
+          <a data-nav="/admin/users" href="/admin/users">账号</a>
         </div>
         <div id="mobileNav" class="nav">
           <a data-nav="/m/home" href="/m/home">任务</a>
@@ -1789,6 +1923,25 @@
         </div>
 
         <div class="section">
+          <div class="section-title">线路图层</div>
+          <div class="row">
+            <label>规划线路</label>
+            <div class="hint">
+              <input id="routeTogglePlan" type="checkbox" checked onchange="toggleRouteVisibility('plan', this.checked)" />
+              <span style="margin-left:6px">显示规划线路</span>
+            </div>
+          </div>
+          <div class="row">
+            <label>我的线路</label>
+            <div class="hint">
+              <input id="routeToggleMy" type="checkbox" checked onchange="toggleRouteVisibility('my', this.checked)" />
+              <span style="margin-left:6px">显示我的线路</span>
+            </div>
+          </div>
+          <div class="hint" style="margin-top:6px">可随时关闭路线图层，便于观察任务点位。</div>
+        </div>
+
+        <div class="section">
           <div class="section-title">工参扇区图层</div>
           <div class="row">
             <label>显示扇区</label>
@@ -1859,7 +2012,7 @@
       </div>
     </div>
     <div id="taskActionMask" class="modalMask bottom" onclick="if(event.target.id==='taskActionMask'){closeTaskAction()}">
-      <div class="sheet">
+      <div class="sheet task-action">
         <div class="modalHead">
           <div class="modalTitle">任务操作</div>
           <button class="secondary" onclick="closeTaskAction()">关闭</button>
@@ -1881,11 +2034,15 @@
           <input id="taskRemark" type="text" placeholder="可选填写备注或说明" />
         </div>
         <div class="actions">
-          <button onclick="applyTaskStatus('执行中')">开始执行</button>
-          <button class="secondary" onclick="applyTaskStatus('已完成')">已完成</button>
-          <button class="secondary" onclick="applyTaskStatus('异常')">标记异常</button>
+          <button type="button" class="secondary status-btn" data-task-status="执行中" onclick="selectTaskStatus('执行中')">开始执行</button>
+          <button type="button" class="secondary status-btn" data-task-status="已完成" onclick="selectTaskStatus('已完成')">已完成</button>
+          <button type="button" class="secondary status-btn" data-task-status="异常" onclick="selectTaskStatus('异常')">标记异常</button>
         </div>
         <div id="taskActionErr" class="err" style="margin-top:8px"></div>
+        <div class="action-bar">
+          <button id="taskActionSubmit" onclick="submitTaskStatus()">提交</button>
+          <button id="taskActionCancel" class="secondary" onclick="cancelTaskStatus()">取消</button>
+        </div>
       </div>
     </div>
     <div id="taskPickMask" class="modalMask" onclick="if(event.target.id==='taskPickMask'){closeTaskPicker()}">

@@ -20,8 +20,13 @@ def init_db() -> None:
 def bootstrap_admin(db: Session, phone: str, password: str, name: str) -> User:
     user = db.scalar(select(User).where(User.phone == phone))
     if user is not None:
+        if user.role != "super_admin":
+            user.role = "super_admin"
+            db.add(user)
+            db.commit()
+            db.refresh(user)
         return user
-    user = User(phone=phone, name=name, role="admin", password_hash=hash_password(password), is_active=True)
+    user = User(phone=phone, name=name, role="super_admin", password_hash=hash_password(password), is_active=True)
     db.add(user)
     db.commit()
     db.refresh(user)
