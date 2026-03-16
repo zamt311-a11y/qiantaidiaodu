@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Build
+import android.util.Log
 import android.webkit.GeolocationPermissions
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
@@ -17,11 +18,14 @@ import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import com.google.firebase.messaging.FirebaseMessaging
+import cn.jpush.android.api.JPushInterface
 
 class MainActivity : AppCompatActivity() {
   private lateinit var webView: WebView
   private var injectedTokenOnce: Boolean = false
   private var filePathCallback: ValueCallback<Array<android.net.Uri>>? = null
+  private val logTag = "NetoptApp"
 
   private val requestLocation = registerForActivityResult(
     ActivityResultContracts.RequestPermission()
@@ -69,7 +73,7 @@ class MainActivity : AppCompatActivity() {
           val cur = (v ?: "").trim().trim('"')
           if (cur.isNotBlank() && cur != "null") {
             prefs.edit().putString("token", cur).apply()
-            NetoptFirebaseService.tryRegisterToken(this@MainActivity)
+            PushTokenReporter.tryRegisterAll(this@MainActivity)
             return@evaluateJavascript
           }
           if (!injectedTokenOnce && savedToken.isNotBlank()) {
@@ -124,6 +128,8 @@ class MainActivity : AppCompatActivity() {
 
     ensureLocationPermission()
     ensureNotificationPermission()
+    requestFcmToken()
+    requestJPushToken()
     webView.loadUrl(BuildConfig.BASE_URL + "/m/home")
 
     onBackPressedDispatcher.addCallback(this) {
@@ -142,6 +148,32 @@ class MainActivity : AppCompatActivity() {
     val p = Manifest.permission.POST_NOTIFICATIONS
     val ok = ContextCompat.checkSelfPermission(this, p) == PackageManager.PERMISSION_GRANTED
     if (!ok) requestNotifications.launch(p)
+  }
+
+  private fun requestFcmToken() {
+    try {
+      FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+        if (!task.isSuccessful) {
+          Log.w(logTag, "FCM token fetch failed", task.exception)
+          return@addOnCompleteListener
+        }
+        val token = (task.result ?: "").trim()
+        if (token.isBlank()) return@addOnCompleteListener
+        val prefs = getSharedPreferences("netopt", MODE_PRIVATE)
+        prefs.edit().putString("fcm_token", token).apply()
+        PushTokenReporter.tryRegisterFcm(this)
+      }
+    } catch (exc: Exception) {
+      Log.w(logTag, "FCM not available on this device", exc)
+    }
+  }
+
+  private fun requestJPushToken() {
+    val regId = (JPushInterface.getRegistrationID(this) ?: "").trim()
+    if (regId.isBlank()) return
+    val prefs = getSharedPreferences("netopt", MODE_PRIVATE)
+    prefs.edit().putString("jpush_token", regId).apply()
+    PushTokenReporter.tryRegisterJPush(this)
   }
 }
 

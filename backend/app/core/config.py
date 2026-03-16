@@ -23,6 +23,9 @@ class Settings(BaseSettings):
 
     fcm_service_account_path: str = ""
     fcm_dry_run: bool = True
+    jpush_app_key: str = ""
+    jpush_master_secret: str = ""
+    jpush_enabled: bool = False
 
     file_root: str = "../data/files"
     file_dir_task_photos: str = "照片"
