@@ -15,9 +15,11 @@ android {
     versionCode = 1
     versionName = "0.1.0"
 
-    val jpushAppKey = (project.findProperty("JPUSH_APPKEY") as? String)?.trim().orEmpty()
-    val jpushChannel = (project.findProperty("JPUSH_CHANNEL") as? String)?.trim().ifEmpty { "developer-default" }
-    manifestPlaceholders["JPUSH_PKGNAME"] = applicationId
+    val jpushAppKey = (project.findProperty("JPUSH_APPKEY") as? String).orEmpty().trim()
+    val jpushChannel = (project.findProperty("JPUSH_CHANNEL") as? String).orEmpty().trim()
+      .ifEmpty { "developer-default" }
+    val appId = applicationId ?: "com.netopt.app"
+    manifestPlaceholders["JPUSH_PKGNAME"] = appId
     manifestPlaceholders["JPUSH_APPKEY"] = jpushAppKey
     manifestPlaceholders["JPUSH_CHANNEL"] = jpushChannel
 
