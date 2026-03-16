@@ -21,6 +21,8 @@ from app.models.user import User
 from app.schemas.task import TaskAdminUpdate, TaskCreate, TaskOut, TaskUpdate
 from app.utils.csv_utils import decode_csv_bytes
 from app.utils.geo import haversine_distance_m
+from app.utils.notify import notify_admins, notify_user
+from app.utils.op_log import log_op
 
 
 router = APIRouter()
@@ -234,7 +236,7 @@ def list_tasks(
 def create_task(
     payload: TaskCreate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> TaskOut:
     task = Task(
         site_id=payload.site_id,
@@ -251,6 +253,7 @@ def create_task(
         assignee_id=payload.assignee_id,
     )
     db.add(task)
+    log_op(db, current_user.id, "task.create", f"site_id={task.site_id}")
     db.commit()
     db.refresh(task)
     return TaskOut.model_validate(task)
@@ -282,6 +285,7 @@ def update_task(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
     if current_user.role not in ("admin", "super_admin") and task.assignee_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无权限")
+    old_status = task.status
     if payload.status is not None:
         task.status = payload.status
     if payload.remark is not None:
@@ -289,6 +293,13 @@ def update_task(
     db.add(task)
     db.commit()
     db.refresh(task)
+    log_op(db, current_user.id, "task.update", f"id={task.id} status={old_status}->{task.status}")
+    db.commit()
+    if current_user.role not in ("admin", "super_admin"):
+        title = "任务状态更新"
+        content = f"{current_user.name} 更新任务 {task.site_id} 为 {task.status}"
+        notify_admins(db, title=title, content=content, msg_type="task")
+        db.commit()
     return TaskOut.model_validate(task)
 
 
@@ -297,7 +308,7 @@ def admin_update_task(
     task_id: int,
     payload: TaskAdminUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> TaskOut:
     task = db.get(Task, task_id)
     if task is None:
@@ -329,6 +340,7 @@ def admin_update_task(
         task.assignee_id = payload.assignee_id
 
     db.add(task)
+    log_op(db, current_user.id, "task.admin_update", f"id={task.id}")
     db.commit()
     db.refresh(task)
     return TaskOut.model_validate(task)
@@ -338,12 +350,13 @@ def admin_update_task(
 def delete_task(
     task_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> dict:
     task = db.get(Task, task_id)
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="任务不存在")
     db.delete(task)
+    log_op(db, current_user.id, "task.delete", f"id={task_id}")
     db.commit()
     return {"deleted": 1}
 
@@ -352,13 +365,14 @@ def delete_task(
 def bulk_delete_tasks(
     payload: TaskBulkDeleteRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> dict:
     if not payload.task_ids:
         return {"deleted": 0}
     tasks = list(db.scalars(select(Task).where(Task.id.in_(payload.task_ids))).all())
     for t in tasks:
         db.delete(t)
+    log_op(db, current_user.id, "task.bulk_delete", f"ids={payload.task_ids}")
     db.commit()
     return {"deleted": len(tasks)}
 
@@ -367,7 +381,7 @@ def bulk_delete_tasks(
 def dispatch_tasks(
     payload: TaskDispatchRequest,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> dict:
     assignee = db.get(User, payload.assignee_id)
     if assignee is None:
@@ -378,6 +392,16 @@ def dispatch_tasks(
         if t.status == "":
             t.status = "待执行"
         db.add(t)
+    log_op(db, current_user.id, "task.dispatch", f"assignee={assignee.id} tasks={payload.task_ids}")
+    if tasks:
+        notify_user(
+            db,
+            user_id=assignee.id,
+            title="新任务派发",
+            content=f"已派发 {len(tasks)} 个任务，请及时查看。",
+            msg_type="task",
+            data={"task_count": str(len(tasks))},
+        )
     db.commit()
     return {"updated": len(tasks)}
 
@@ -388,7 +412,7 @@ def import_tasks(
     mapping_json: str | None = Form(default=None),
     encoding: str | None = Form(default=None),
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> dict:
     content = file.file.read()
     filename = file.filename or ""
@@ -457,6 +481,7 @@ def import_tasks(
         )
         db.add(task)
         inserted += 1
+    log_op(db, current_user.id, "task.import", f"inserted={inserted} errors={len(errors)}")
     db.commit()
     return {"inserted": inserted, "errors": [e.model_dump() for e in errors]}
 

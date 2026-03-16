@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     bootstrap_admin_password: str = ""
     bootstrap_admin_name: str = "管理员"
 
+    fcm_service_account_path: str = ""
+    fcm_dry_run: bool = True
+
     file_root: str = "../data/files"
     file_dir_task_photos: str = "照片"
     file_dir_kpi: str = "工参"
@@ -53,4 +56,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-

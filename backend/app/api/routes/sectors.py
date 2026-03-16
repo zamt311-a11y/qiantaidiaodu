@@ -19,6 +19,8 @@ from app.schemas.sector import SectorListItem, SectorOut
 from app.schemas.task import TaskOut
 from app.utils.csv_utils import decode_csv_bytes
 from app.utils.geo import haversine_distance_m, point_in_polygon, sector_polygon
+from app.utils.notify import notify_engineers
+from app.utils.op_log import log_op
 
 
 router = APIRouter()
@@ -209,7 +211,7 @@ def import_sectors(
     mapping_json: str | None = Form(default=None),
     encoding: str | None = Form(default=None),
     db: Session = Depends(get_db),
-    _: object = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> dict:
     content = file.file.read()
     text, _ = decode_csv_bytes(content, encoding)
@@ -298,6 +300,9 @@ def import_sectors(
         )
         inserted += 1
 
+    log_op(db, current_user.id, "sector.import", f"network={network} inserted={inserted} errors={len(errors)}")
+    if inserted > 0:
+        notify_engineers(db, title="工参更新提醒", content=f"工参数据已更新（{network}），新增 {inserted} 条。", msg_type="sector")
     db.commit()
     return {"network": network, "inserted": inserted, "errors": [e.model_dump() for e in errors]}
 
@@ -316,7 +321,7 @@ def preview_sector_import(
 def purge_sectors(
     payload: SectorPurgeRequest,
     db: Session = Depends(get_db),
-    _: object = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> dict:
     if not payload.all and not payload.network and not payload.band:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="未指定过滤条件；清空全部请传 all=true")
@@ -332,6 +337,9 @@ def purge_sectors(
     if payload.band:
         d = d.where(Sector.band.in_(payload.band))
     db.execute(d)
+    log_op(db, current_user.id, "sector.purge", f"deleted={total} network={payload.network} band={payload.band} all={payload.all}")
+    if total:
+        notify_engineers(db, title="工参更新提醒", content=f"工参数据已清理 {total} 条，请留意。", msg_type="sector")
     db.commit()
     return {"deleted": total}
 
@@ -391,12 +399,13 @@ def admin_list_sectors(
 def delete_sector(
     sector_id: int,
     db: Session = Depends(get_db),
-    _: object = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> dict:
     sector = db.get(Sector, sector_id)
     if sector is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="扇区不存在")
     db.delete(sector)
+    log_op(db, current_user.id, "sector.delete", f"id={sector_id}")
     db.commit()
     return {"deleted": 1}
 
@@ -405,13 +414,14 @@ def delete_sector(
 def bulk_delete_sectors(
     payload: SectorBulkDeleteRequest,
     db: Session = Depends(get_db),
-    _: object = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ) -> dict:
     if not payload.sector_ids:
         return {"deleted": 0}
     sectors = list(db.scalars(select(Sector).where(Sector.id.in_(payload.sector_ids))).all())
     for s in sectors:
         db.delete(s)
+    log_op(db, current_user.id, "sector.bulk_delete", f"ids={payload.sector_ids}")
     db.commit()
     return {"deleted": len(sectors)}
 

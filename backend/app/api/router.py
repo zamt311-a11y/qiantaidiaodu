@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from app.api.routes import auth, route_plans, sectors, stats, tasks, users
+from app.api.routes import auth, backups, messages, route_plans, sectors, stats, tasks, users
 
 
 api_router = APIRouter()
@@ -12,4 +12,6 @@ api_router.include_router(sectors.router, prefix="/sectors", tags=["sectors"])
 api_router.include_router(users.router, prefix="/users", tags=["users"])
 api_router.include_router(stats.router, prefix="/stats", tags=["stats"])
 api_router.include_router(route_plans.router, prefix="/route_plans", tags=["route_plans"])
+api_router.include_router(messages.router, prefix="/messages", tags=["messages"])
+api_router.include_router(backups.router, prefix="/backups", tags=["backups"])
 

@@ -73,7 +73,7 @@
       .task-marker.doing { background: #f59e0b; color: #f59e0b; }
       .task-marker.done { background: #22c55e; color: #22c55e; }
       .task-marker.bad { background: #ef4444; color: #ef4444; }
-      .gps-dot { width: 14px; height: 14px; border-radius: 999px; background: #ef4444; box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.25); border: 2px solid #fff; }
+      .gps-dot { width: 14px; height: 14px; border-radius: 999px; background: #3b82f6; box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.25); border: 2px solid #fff; }
       .status-btn.active { border-color: var(--accent); background: var(--accent); color: #fff; }
       .action-bar { position: sticky; bottom: 0; background: #fff; padding: 10px 0 0; display: flex; gap: 8px; border-top: 1px solid var(--line); }
       @keyframes pulse {
@@ -130,6 +130,8 @@
         gpsMarker: null,
         gpsWatchId: null,
         gpsCentered: false,
+        gpsPos: null,
+        gpsFallbackTried: false,
         sectorReloadTimer: null,
         route: null,
         routeSource: null,
@@ -447,9 +449,60 @@
         }
       }
 
+      function requestGpsOnce() {
+        if (!IS_MOBILE || !state.map) return
+        if (navigator.geolocation) {
+          try {
+            navigator.geolocation.getCurrentPosition(handleGpsPosition, handleGpsError, {
+              enableHighAccuracy: true,
+              maximumAge: 3000,
+              timeout: 8000,
+            })
+            return
+          } catch (_) {
+          }
+        }
+        requestAmapPosition()
+      }
+
+      function requestAmapPosition() {
+        if (state.gpsFallbackTried) return
+        state.gpsFallbackTried = true
+        if (!window.AMap || !state.map) return
+        try {
+          AMap.plugin("AMap.Geolocation", () => {
+            const geo = new AMap.Geolocation({
+              enableHighAccuracy: true,
+              timeout: 8000,
+              maximumAge: 5000,
+              convert: true,
+              showButton: false,
+              showMarker: false,
+              showCircle: false,
+            })
+            geo.getCurrentPosition((status, result) => {
+              if (status === "complete" && result && result.position) {
+                handleGpsPosition({
+                  coords: {
+                    longitude: result.position.lng,
+                    latitude: result.position.lat,
+                    accuracy: result.accuracy,
+                  },
+                })
+              } else {
+                handleGpsError(result)
+              }
+            })
+          })
+        } catch (_) {
+        }
+      }
+
       function startGpsWatch() {
-        if (!IS_MOBILE || !navigator.geolocation || !state.map) return
+        if (!IS_MOBILE || !state.map) return
         if (state.gpsWatchId != null) return
+        requestGpsOnce()
+        if (!navigator.geolocation) return
         try {
           state.gpsWatchId = navigator.geolocation.watchPosition(handleGpsPosition, handleGpsError, {
             enableHighAccuracy: true,
@@ -461,10 +514,12 @@
       }
 
       function handleGpsPosition(pos) {
-        if (!pos || !pos.coords || !state.map) return
-        const lon = pos.coords.longitude
-        const lat = pos.coords.latitude
+        if (!pos || !state.map) return
+        const coords = pos.coords || {}
+        const lon = coords.longitude
+        const lat = coords.latitude
         if (typeof lon !== "number" || typeof lat !== "number") return
+        state.gpsPos = { lon, lat, accuracy: coords.accuracy || null, ts: Date.now() }
         if (!state.gpsMarker) {
           try {
             state.gpsMarker = new AMap.Marker({
@@ -487,6 +542,7 @@
       }
 
       function handleGpsError() {
+        if (!state.gpsFallbackTried) requestAmapPosition()
       }
 
       function toggleRouteVisibility(kind, checked) {
@@ -1221,12 +1277,20 @@
         if (f.date_from) qs.set("date_from", f.date_from)
         if (f.date_to) qs.set("date_to", f.date_to)
         if (f.near) {
-          try {
-            const c = state.map.getCenter()
-            qs.set("near_lon", String(c.lng))
-            qs.set("near_lat", String(c.lat))
+          if (!state.gpsPos) requestGpsOnce()
+          const pos = state.gpsPos
+          if (pos && typeof pos.lon === "number" && typeof pos.lat === "number") {
+            qs.set("near_lon", String(pos.lon))
+            qs.set("near_lat", String(pos.lat))
             qs.set("radius_km", String(Number(f.radius_km || "5") || 5))
-          } catch (_) {
+          } else {
+            try {
+              const c = state.map.getCenter()
+              qs.set("near_lon", String(c.lng))
+              qs.set("near_lat", String(c.lat))
+              qs.set("radius_km", String(Number(f.radius_km || "5") || 5))
+            } catch (_) {
+            }
           }
         }
         const tasks = await api(`/api/tasks?${qs.toString()}`)
@@ -1735,7 +1799,7 @@
       window._AMapSecurityConfig = { securityJsCode: "{{ amap_security_js_code }}" }
     </script>
     {% endif %}
-    <script src="https://webapi.amap.com/maps?v=2.0&key={{ amap_key }}&plugin=AMap.Scale,AMap.ToolBar,AMap.GeoJSON"></script>
+    <script src="https://webapi.amap.com/maps?v=2.0&key={{ amap_key }}&plugin=AMap.Scale,AMap.ToolBar,AMap.GeoJSON,AMap.Geolocation"></script>
     {% endif %}
   </head>
   <body onload="init()">

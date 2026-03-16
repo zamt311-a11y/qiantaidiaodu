@@ -14,6 +14,8 @@ from app.models.route_plan import RoutePlan
 from app.models.task import Task
 from app.models.user import User
 from app.schemas.task import TaskOut
+from app.utils.notify import notify_user
+from app.utils.op_log import log_op
 
 
 router = APIRouter()
@@ -89,6 +91,15 @@ def create_route_plan(
         created_by=current_user.id,
     )
     db.add(plan)
+    log_op(db, current_user.id, "route_plan.create", f"assignee={assignee.id} tasks={len(payload.task_ids)}")
+    notify_user(
+        db,
+        user_id=assignee.id,
+        title="新路线已分配",
+        content=f"路线 {name} 已分配给你，请及时查看。",
+        msg_type="route_plan",
+        data={"plan_name": name, "task_count": str(len(payload.task_ids))},
+    )
     db.commit()
     db.refresh(plan)
     return _plan_to_dict(plan)
