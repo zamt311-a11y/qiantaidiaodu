@@ -1,6 +1,7 @@
 plugins {
   id("com.android.application")
   id("org.jetbrains.kotlin.android")
+  id("com.google.gms.google-services")
 }
 
 android {
@@ -14,7 +15,7 @@ android {
     versionCode = 1
     versionName = "0.1.0"
 
-    buildConfigField("String", "BASE_URL", "\"http://10.0.2.2:8000\"")
+    buildConfigField("String", "BASE_URL", "\"https://47.103.138.58\"")
   }
 
   buildTypes {
@@ -46,5 +47,7 @@ dependencies {
   implementation("androidx.appcompat:appcompat:1.6.1")
   implementation("com.google.android.material:material:1.11.0")
   implementation("androidx.activity:activity-ktx:1.8.2")
+  implementation(platform("com.google.firebase:firebase-bom:32.7.4"))
+  implementation("com.google.firebase:firebase-messaging")
 }
 

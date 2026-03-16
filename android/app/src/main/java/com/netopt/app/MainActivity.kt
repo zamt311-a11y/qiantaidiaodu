@@ -5,12 +5,14 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.Build
 import android.webkit.GeolocationPermissions
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.addCallback
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -26,6 +28,10 @@ class MainActivity : AppCompatActivity() {
   ) { granted ->
     if (granted) webView.reload()
   }
+
+  private val requestNotifications = registerForActivityResult(
+    ActivityResultContracts.RequestPermission()
+  ) { }
 
   private val pickFiles = registerForActivityResult(
     ActivityResultContracts.StartActivityForResult()
@@ -63,6 +69,7 @@ class MainActivity : AppCompatActivity() {
           val cur = (v ?: "").trim().trim('"')
           if (cur.isNotBlank() && cur != "null") {
             prefs.edit().putString("token", cur).apply()
+            NetoptFirebaseService.tryRegisterToken(this@MainActivity)
             return@evaluateJavascript
           }
           if (!injectedTokenOnce && savedToken.isNotBlank()) {
@@ -116,6 +123,7 @@ class MainActivity : AppCompatActivity() {
     s.mediaPlaybackRequiresUserGesture = false
 
     ensureLocationPermission()
+    ensureNotificationPermission()
     webView.loadUrl(BuildConfig.BASE_URL + "/m/home")
 
     onBackPressedDispatcher.addCallback(this) {
@@ -127,6 +135,13 @@ class MainActivity : AppCompatActivity() {
     val p = Manifest.permission.ACCESS_FINE_LOCATION
     val ok = ContextCompat.checkSelfPermission(this, p) == PackageManager.PERMISSION_GRANTED
     if (!ok) requestLocation.launch(p)
+  }
+
+  private fun ensureNotificationPermission() {
+    if (Build.VERSION.SDK_INT < 33) return
+    val p = Manifest.permission.POST_NOTIFICATIONS
+    val ok = ContextCompat.checkSelfPermission(this, p) == PackageManager.PERMISSION_GRANTED
+    if (!ok) requestNotifications.launch(p)
   }
 }
 

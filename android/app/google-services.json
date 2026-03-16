@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "949212356043",
+    "project_id": "phone-message-c0b62",
+    "storage_bucket": "phone-message-c0b62.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:949212356043:android:7c267b76b37ef1dd96ea4e",
+        "android_client_info": {
+          "package_name": "com.netopt.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAG7kshs7p4UZ9dIoVDuNwH2baUiorzVjQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
